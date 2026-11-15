@@ -1,0 +1,70 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":separateMultipleMajorReleases",
+    "security:openssf-scorecard"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["* * * * 6"],
+  "labels": ["dependencies"],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "dependencyDashboardAutoclose": true,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "minimumReleaseAge": "1 day",
+    "labels": ["dependencies", "security"]
+  },
+  "platformAutomerge": false,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["* * * * 6"]
+  },
+  "packageRules": [
+    {
+      "description": ".python-version is the interpreter the workspace is developed on; CI's matrix covers every supported one (3.10 to 3.14).",
+      "matchManagers": ["pyenv"],
+      "enabled": false
+    },
+    {
+      "description": "Dev tools: keep the ranges, move only uv.lock.",
+      "matchManagers": ["pep621"],
+      "rangeStrategy": "update-lockfile"
+    },
+    {
+      "description": "These ranges ship in the published wheel/sdist metadata: only widen them when a release falls outside, never raise the floor for users.",
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["project.dependencies", "build-system.requires"],
+      "rangeStrategy": "widen"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["dependency-groups"],
+      "groupName": "Python dev tools"
+    },
+    {
+      "description": "CI (ruff, actionlint, zizmor, pytest on every Python and Django, the client's types, tests and build) is the gate: Renovate merges once every check is green.",
+      "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest"],
+      "matchCurrentVersion": "!/^0/",
+      "automerge": true
+    },
+    {
+      "description": "Changes to the published metadata are reviewed by hand (and need a version bump + CHANGELOG entry to ship).",
+      "matchManagers": ["pep621"],
+      "matchDepTypes": ["project.dependencies", "build-system.requires"],
+      "automerge": false
+    },
+    {
+      "description": "A digest change with no new version means a moved tag: look at it before merging.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": false
+    }
+  ]
+}

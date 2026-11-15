@@ -1,0 +1,212 @@
+import { Button } from '@heroui/react'
+import { Link } from '@tanstack/react-router'
+import {
+  LuBook,
+  LuBraces,
+  LuFileText,
+  LuGitCompare,
+  LuList,
+  LuMoon,
+  LuPanelLeft,
+  LuSun,
+  LuTable,
+  LuTerminal,
+  LuZap,
+} from 'react-icons/lu'
+
+import { useDb } from '../../hooks/index.js'
+import { useUiStore } from '../../lib/index.js'
+import { PaletteButton } from '../palette/palette.js'
+import { groupByApp } from './groups.js'
+
+type Schema = {
+  readonly models: readonly { readonly name: string; readonly app: string }[]
+  readonly enums: readonly { readonly name: string }[]
+}
+
+const NAV = 'flex items-center gap-2.5 rounded-lg px-3 py-2 text-lead'
+const NAV_ACTIVE = { className: `${NAV} bg-accent-soft font-semibold text-accent-text` } as const
+const NAV_INACTIVE = { className: `${NAV} hover:bg-canvas` } as const
+
+const ENTITY = 'flex items-center gap-2 rounded-lg border px-3 py-[7px] font-mono text-body'
+const ENTITY_ACTIVE = {
+  className: `${ENTITY} border-accent bg-accent-soft font-semibold text-accent-text`,
+} as const
+const ENTITY_INACTIVE = { className: `${ENTITY} border-transparent hover:bg-canvas` } as const
+
+function EntityLink({
+  to,
+  name,
+  icon,
+}: {
+  readonly to: '/models/$name' | '/enums/$name'
+  readonly name: string
+  readonly icon: React.ReactNode
+}) {
+  return (
+    <Link to={to} params={{ name }} activeProps={ENTITY_ACTIVE} inactiveProps={ENTITY_INACTIVE}>
+      {({ isActive }) => (
+        <>
+          <span className={`shrink-0 ${isActive ? 'text-accent' : 'text-faint'}`}>{icon}</span>
+          <span className="flex-1 truncate">{name}</span>
+        </>
+      )}
+    </Link>
+  )
+}
+
+function StatusDot({ on, warn = false }: { readonly on: boolean; readonly warn?: boolean }) {
+  return (
+    <span
+      className={`size-2 shrink-0 rounded-full ${on ? 'bg-ok ring-[3px] ring-ok/20' : warn ? 'bg-danger' : 'bg-faint'}`}
+    />
+  )
+}
+
+export function Sidebar({
+  schema,
+  schemaPath,
+}: {
+  readonly schema: Schema | null
+  readonly schemaPath: string | null
+}) {
+  const connection = useUiStore((s) => s.connection)
+  const theme = useUiStore((s) => s.theme)
+  const toggleTheme = useUiStore((s) => s.toggleTheme)
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar)
+  const database = useDb().data ?? null
+  const connected = database?.connected ?? false
+  const models = schema?.models ?? []
+  const enums = schema?.enums ?? []
+  const apps = new Set(models.map((model) => model.app)).size
+  const status =
+    connection === 'live' ? 'Watching' : connection === 'offline' ? 'Disconnected' : 'Connecting'
+  return (
+    <aside className="flex min-h-0 flex-col overflow-y-auto border-r border-line bg-surface">
+      <div className="flex items-center gap-1.5 px-[18px] pt-[18px] pb-3.5">
+        <Link
+          className="flex min-w-0 items-center gap-2 text-lead font-bold tracking-tight"
+          to="/"
+          search={{}}
+        >
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent text-white">
+            <LuZap size={18} />
+          </span>
+          <span className="truncate">Djangoer Studio</span>
+        </Link>
+        <Button
+          variant="ghost"
+          size="sm"
+          isIconOnly
+          className="ml-auto size-7 shrink-0 text-muted"
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          onPress={toggleTheme}
+        >
+          {theme === 'dark' ? <LuSun /> : <LuMoon />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          isIconOnly
+          className="size-7 shrink-0 text-muted"
+          aria-label="Hide the sidebar"
+          onPress={toggleSidebar}
+        >
+          <LuPanelLeft />
+        </Button>
+      </div>
+      <div className="px-2.5 pb-2">
+        <PaletteButton />
+      </div>
+      <nav className="flex flex-col gap-0.5 px-2.5 pb-3">
+        <Link
+          to="/"
+          search={{}}
+          activeOptions={{ exact: true }}
+          activeProps={NAV_ACTIVE}
+          inactiveProps={NAV_INACTIVE}
+        >
+          <span className="inline-flex opacity-85">
+            <LuGitCompare />
+          </span>
+          <span>Schema</span>
+        </Link>
+        <Link to="/source" search={{}} activeProps={NAV_ACTIVE} inactiveProps={NAV_INACTIVE}>
+          <span className="inline-flex opacity-85">
+            <LuFileText />
+          </span>
+          <span>models.py</span>
+        </Link>
+        <Link to="/sql" search={{}} activeProps={NAV_ACTIVE} inactiveProps={NAV_INACTIVE}>
+          <span className="inline-flex opacity-85">
+            <LuTerminal />
+          </span>
+          <span>SQL</span>
+        </Link>
+        <Link to="/client" activeProps={NAV_ACTIVE} inactiveProps={NAV_INACTIVE}>
+          <span className="inline-flex opacity-85">
+            <LuBraces />
+          </span>
+          <span>Django ORM</span>
+        </Link>
+        <Link to="/docs" activeProps={NAV_ACTIVE} inactiveProps={NAV_INACTIVE}>
+          <span className="inline-flex opacity-85">
+            <LuBook />
+          </span>
+          <span>Docs</span>
+        </Link>
+      </nav>
+      <div className="px-2.5 pb-2.5">
+        <div className="heading px-3 pt-2.5 pb-1.5">Models</div>
+        {groupByApp(models).map((group) => (
+          <div key={group.app}>
+            {/* One app needs no heading of its own: the models are the project's. */}
+            {apps > 1 ? (
+              <div className="truncate px-3 pt-2 pb-1 font-mono text-caption text-faint">
+                {group.app}
+              </div>
+            ) : null}
+            <ul className="m-0 list-none p-0">
+              {group.models.map((model) => (
+                <li key={model.name}>
+                  <EntityLink to="/models/$name" name={model.name} icon={<LuTable size={15} />} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      {enums.length > 0 ? (
+        <div className="px-2.5 pb-2.5">
+          <div className="heading px-3 pt-2.5 pb-1.5">Enums</div>
+          <ul className="m-0 list-none p-0">
+            {enums.map((value) => (
+              <li key={value.name}>
+                <EntityLink to="/enums/$name" name={value.name} icon={<LuList size={15} />} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="mt-auto flex flex-col gap-1 border-t border-line px-[18px] py-3 text-code text-muted">
+        <div className="flex items-center gap-2">
+          <StatusDot on={connection === 'live'} warn={connection === 'offline'} />
+          <span className="truncate">
+            {status}
+            {schemaPath ? ` · ${schemaPath}` : ''}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusDot on={connected} />
+          <span className="truncate" title={database?.error ?? undefined}>
+            {database === null
+              ? 'Database: checking…'
+              : connected
+                ? `${database.dialect ?? 'database'} · ${database.url ?? ''}`
+                : 'Database not reachable'}
+          </span>
+        </div>
+      </div>
+    </aside>
+  )
+}

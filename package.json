@@ -1,0 +1,17 @@
+{
+  "name": "djangoer-monorepo",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -F @djangoer/studio build",
+    "dev": "pnpm -F @djangoer/studio dev",
+    "check": "pnpm -F @djangoer/studio check",
+    "test": "pnpm -F @djangoer/studio test",
+    "generate": "pnpm -F @djangoer/studio generate",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "lint": "pnpm -F @djangoer/studio lint"
+  },
+  "packageManager": "pnpm@11.7.0"
+}

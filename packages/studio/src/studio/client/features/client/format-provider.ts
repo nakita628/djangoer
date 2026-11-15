@@ -1,0 +1,20 @@
+import { parseResponse } from 'hono/client'
+import type { languages } from 'monaco-editor/editor/editor.api.js'
+
+import { client as api } from '../../api/index.js'
+
+/** Format Document: the query laid out by the server's formatter, replacing the whole text. */
+export function formattingProvider() {
+  return {
+    displayName: 'Python',
+    provideDocumentFormattingEdits: async (model) => {
+      const query = model.getValue()
+      if (query.trim() === '') return []
+      const formatted = await parseResponse(api.client.format.$post({ json: { query } })).catch(
+        () => null,
+      )
+      if (formatted === null || formatted.text === query) return []
+      return [{ range: model.getFullModelRange(), text: formatted.text }]
+    },
+  } satisfies languages.DocumentFormattingEditProvider
+}
