@@ -132,6 +132,8 @@ The domain, by route:
 | `/api/client` | `domain/orm/`: an ORM query is parsed with `ast`. `infer.py` works out what each expression is (a manager, a queryset, an instance), `analyze.py` the models and fields it touches and its mistakes, `complete.py` what can be typed next, `run.py` runs it and records the SQL |
 | `/api/docs`   | `domain/docs.py`: the reference of every model                                                                                                                                                                                                                                  |
 
+| `/api/export`, `djangoer er`, `djangoer docs` | `domain/er.py` (Mermaid, DBML), `domain/svg.py` (the diagram, laid out and drawn without a browser), `domain/markdown.py` (the docs) |
+
 ## The client's types
 
 The client is typed from the server, with no server written twice:

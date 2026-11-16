@@ -11,13 +11,13 @@ from collections.abc import Callable
 from typing import Any, TypeVar
 
 from django.db import close_old_connections
+from pydantic import BaseModel
 from returns.result import Failure, Result, Success
 from typing_extensions import Never
 
-from ..contract import Contract
 from ..errors import StudioError
 
-C = TypeVar("C", bound=Contract)
+C = TypeVar("C", bound=BaseModel)
 E = TypeVar("E", bound=StudioError)
 T = TypeVar("T")
 

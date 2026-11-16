@@ -7,6 +7,7 @@ builds the record from the request; nothing below takes it apart and passes the 
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -83,3 +84,11 @@ class RunQuery(OnDatabase):
     """A query to run, or to preview the SQL of."""
 
     query: OrmQuery
+
+
+class ExportFile(OnDatabase):
+    """A file of the schema to hand over: `er.md`, `schema.dbml`, `er.svg`, `er.png`, `docs.md`."""
+
+    name: str
+    # The project's directory, which tells its own models from the ones of installed packages.
+    root: Path

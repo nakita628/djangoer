@@ -129,26 +129,33 @@ def serve(options: argparse.Namespace, *, write=_print) -> None:
         pass
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="djangoer", description="A Studio for your Django models and their data."
-    )
-    parser.add_argument("--version", action="version", version=f"djangoer {__version__}")
-    commands = parser.add_subparsers(dest="command", metavar="command")
-    studio = commands.add_parser("studio", help="open Studio for the project in this directory")
-    studio.add_argument(
+def add_project_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--settings",
         help="settings module (default: $DJANGO_SETTINGS_MODULE, else what manage.py sets)",
     )
-    studio.add_argument(
+    parser.add_argument(
         "--pythonpath", help="directory to import the project from (default: the current directory)"
     )
-    add_studio_arguments(studio)
-    options = parser.parse_args(argv)
-    if options.command != "studio":
-        parser.print_help()
-        return 0 if options.command is None else 2
 
+
+def add_export_arguments(parser: argparse.ArgumentParser) -> None:
+    add_project_arguments(parser)
+    parser.add_argument(
+        "--database",
+        default="default",
+        help="alias in DATABASES to read types from (default: default)",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="include the models of installed packages (django.contrib.auth, …), not only the project's own",
+    )
+
+
+def load_project(options: argparse.Namespace) -> bool:
+    """Point Django at the project in the current directory and load it. False, with the reason
+    printed, when there is no settings module to load."""
     root = Path(options.pythonpath or Path.cwd()).resolve()
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
@@ -163,9 +170,92 @@ def main(argv: list[str] | None = None) -> int:
             "or pass --settings myproject.settings.",
             file=sys.stderr,
         )
-        return 2
+        return False
     os.environ["DJANGO_SETTINGS_MODULE"] = settings_module
+    return True
+
+
+def write_er(options: argparse.Namespace) -> int:
+    """`djangoer er -o er.md -o schema.dbml -o er.svg -o er.png`: the ER diagram, in the format
+    each file's extension names."""
+    import django
+    from returns.result import Failure, Success
+
+    django.setup()
+    from .studio.domain import export
+
+    schema = export.schema_for(options.database, Path.cwd(), everything=options.all)
+    failed = False
+    for output in options.output:
+        target = Path(output)
+        match export.render_er(schema, target.suffix):
+            case Success(content):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content)
+                _print(f"wrote {target}")
+            case Failure(error):
+                print(f"djangoer: {target}: {error}", file=sys.stderr)
+                failed = True
+    return 1 if failed else 0
+
+
+def write_docs(options: argparse.Namespace) -> int:
+    """`djangoer docs -o docs/schema`: README.md with every model, and the diagram it shows."""
+    import django
+
+    django.setup()
+    from .studio.domain import export
+
+    schema = export.schema_for(options.database, Path.cwd(), everything=options.all)
+    directory = Path(options.output)
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, content in export.render_docs(options.database, schema).items():
+        (directory / name).write_bytes(content)
+        _print(f"wrote {directory / name}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="djangoer", description="A Studio for your Django models and their data."
+    )
+    parser.add_argument("--version", action="version", version=f"djangoer {__version__}")
+    commands = parser.add_subparsers(dest="command", metavar="command")
+    studio = commands.add_parser("studio", help="open Studio for the project in this directory")
+    add_project_arguments(studio)
+    add_studio_arguments(studio)
+    er = commands.add_parser(
+        "er", help="write the ER diagram: Mermaid (.md), DBML (.dbml), SVG (.svg) or PNG (.png)"
+    )
+    er.add_argument(
+        "-o",
+        "--output",
+        action="append",
+        required=True,
+        metavar="FILE",
+        help="a file to write; its extension picks the format. Repeat it for several",
+    )
+    add_export_arguments(er)
+    docs = commands.add_parser("docs", help="write the docs of the models as Markdown")
+    docs.add_argument(
+        "-o",
+        "--output",
+        default="docs/schema",
+        metavar="DIR",
+        help="directory to write (default: docs/schema)",
+    )
+    add_export_arguments(docs)
+    options = parser.parse_args(argv)
+    if options.command is None:
+        parser.print_help()
+        return 0
+    if not load_project(options):
+        return 2
     try:
+        if options.command == "er":
+            return write_er(options)
+        if options.command == "docs":
+            return write_docs(options)
         serve(options)
     except ImportError as error:
         print(f"djangoer: cannot import the project: {error}", file=sys.stderr)

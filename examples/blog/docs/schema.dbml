@@ -1,0 +1,63 @@
+Enum PostStatus {
+  draft
+  published
+  archived
+}
+
+Table blog_author {
+  id integer [pk, increment]
+  user_id integer [unique]
+  name varchar(100) [not null]
+  email varchar(254) [unique, not null, note: 'Where replies are sent']
+  bio text [not null]
+  joined_at datetime [default: `now()`, not null]
+
+  Note: '''Someone who writes posts.'''
+}
+
+Table blog_tag {
+  id integer [pk, increment]
+  label varchar(50) [unique, not null]
+}
+
+Table blog_post {
+  id integer [pk, increment]
+  author_id bigint [not null]
+  title varchar(200) [not null]
+  slug varchar(200) [not null]
+  body text [not null]
+  status PostStatus [default: 'draft', not null]
+  views "integer unsigned" [default: 0, not null]
+  rating decimal
+  metadata text [default: `dict()`, not null]
+  published_at datetime
+  created_at datetime [default: `now()`, not null]
+  updated_at datetime [default: `now()`, not null]
+
+  indexes {
+    (author_id, slug) [unique, name: 'post_author_slug_unique']
+    (status, published_at) [name: 'post_status_published']
+  }
+
+  Note: '''An article, a draft until it is published.'''
+}
+
+Table blog_comment {
+  id integer [pk, increment]
+  post_id bigint [not null]
+  author_id bigint
+  parent_id bigint
+  text text [not null]
+  approved bool [default: false, not null]
+  created_at datetime [default: `now()`, not null]
+}
+
+Ref blog_post_author_id_fk: blog_post.author_id > blog_author.id [delete: cascade]
+
+Ref: blog_tag.id <> blog_post.id
+
+Ref blog_comment_post_id_fk: blog_comment.post_id > blog_post.id [delete: cascade]
+
+Ref blog_comment_author_id_fk: blog_comment.author_id > blog_author.id [delete: set null]
+
+Ref blog_comment_parent_id_fk: blog_comment.parent_id > blog_comment.id [delete: cascade]

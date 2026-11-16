@@ -3,6 +3,7 @@
 from . import client as ClientUseCase  # noqa: N812
 from . import database as DatabaseUseCase  # noqa: N812
 from . import docs as DocsUseCase  # noqa: N812
+from . import export as ExportUseCase  # noqa: N812
 from . import schema as SchemaUseCase  # noqa: N812
 
-__all__ = ["ClientUseCase", "DatabaseUseCase", "DocsUseCase", "SchemaUseCase"]
+__all__ = ["ClientUseCase", "DatabaseUseCase", "DocsUseCase", "ExportUseCase", "SchemaUseCase"]

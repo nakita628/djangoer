@@ -14,7 +14,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .. import __version__
 from . import contract
-from .handlers import client, db, docs, problems, schema
+from .handlers import client, db, docs, export, problems, schema
 from .state import State
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -114,7 +114,7 @@ def create_api(state: State | None) -> FastAPI:
             )
         )
 
-    for module in (schema, db, client, docs):
+    for module in (schema, db, client, docs, export):
         api.include_router(module.router)
     api.openapi = lambda: _openapi(api)  # type: ignore[method-assign]
     return api

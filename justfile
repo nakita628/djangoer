@@ -27,6 +27,11 @@ openapi:
 studio *args:
     cd examples/blog && uv run python manage.py migrate -v0 && uv run python manage.py seed && uv run djangoer studio {{ args }}
 
+# Write the example's ER diagram (Mermaid, DBML, SVG) and its docs, as committed under examples/blog/docs
+example-docs:
+    cd examples/blog && uv run djangoer er -o docs/er.md -o docs/schema.dbml -o docs/er.svg
+    cd examples/blog && uv run djangoer docs -o docs/schema
+
 # Run pytest, or the given paths: `just test packages/djangoer/tests/test_orm.py`
 test *args:
     uv run pytest {{ args }}

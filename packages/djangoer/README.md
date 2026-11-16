@@ -82,6 +82,29 @@ opens the example in the playground, where a read runs as it arrives.
 
 ![The generated docs of a model](https://raw.githubusercontent.com/nakita628/djangoer/refs/heads/main/assets/img/studio-docs.png)
 
+## ER diagram and docs as files
+
+```bash
+djangoer er -o docs/er.md -o docs/schema.dbml -o docs/er.svg -o docs/er.png
+djangoer docs -o docs/schema
+```
+
+`djangoer er` writes the ER diagram of the models; the extension of each file picks its format.
+
+| Extension | What is written                                                           |
+| --------- | ------------------------------------------------------------------------- |
+| `.md`     | A [Mermaid](https://mermaid.js.org/) `erDiagram`, which GitHub draws      |
+| `.dbml`   | [DBML](https://dbml.dbdiagram.io/): tables, enums, indexes and references |
+| `.svg`    | The diagram as an image                                                   |
+| `.png`    | The same image as a PNG. Needs `pip install "djangoer[png]"`              |
+
+`djangoer docs` writes a directory: `README.md` with a section per model (its columns, indexes
+and relations) and the whole schema as SQL, beside the `er.svg` it shows.
+
+Both cover the project's own models; `--all` adds those of installed packages
+(`django.contrib.auth` and the like). The Schema page of Studio has the same files as download
+buttons.
+
 ## What it runs, and where
 
 Studio is a development tool. It runs in your project's own process, with the settings and the

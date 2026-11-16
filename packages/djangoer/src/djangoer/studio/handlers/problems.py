@@ -20,6 +20,7 @@ from .. import contract
 from ..errors import (
     DatabaseRejectedError,
     DatabaseUnavailableError,
+    ExportError,
     InvalidInputError,
     QueryError,
     UnknownModelError,
@@ -69,6 +70,10 @@ def refused(request: Request, error: QueryError) -> JSONResponse:
 
 def unavailable(request: Request, error: DatabaseUnavailableError) -> JSONResponse:
     return answer(contract.ServiceUnavailableProblem(detail=str(error), instance=request.url.path))
+
+
+def no_export(request: Request, error: ExportError) -> JSONResponse:
+    return answer(contract.NotFoundProblem(detail=str(error), instance=request.url.path))
 
 
 def _field(location: Sequence[Any]) -> str:

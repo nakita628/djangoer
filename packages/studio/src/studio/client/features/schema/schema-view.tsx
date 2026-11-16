@@ -1,4 +1,4 @@
-import { Button, Tooltip, toast } from '@heroui/react'
+import { Button, buttonVariants, Tooltip, toast } from '@heroui/react'
 import {
   Background,
   BackgroundVariant,
@@ -26,6 +26,13 @@ import { GeometryContext, useDiagramGeometry } from './geometry.js'
 import { buildEdges, buildNodes, highlightEdges, highlightOf } from './graph.js'
 import { autoLayout, positionsFor } from './layout.js'
 import { RelationEdge } from './relation-edge.js'
+
+/** The schema as text, each a file the server writes: `/api/export/<name>`. */
+const TEXT_EXPORTS = [
+  { name: 'er.md', label: 'Mermaid', hint: 'Download the ER diagram as a Mermaid block' },
+  { name: 'schema.dbml', label: 'DBML', hint: 'Download the schema as DBML' },
+  { name: 'docs.md', label: 'Markdown', hint: 'Download the docs of the models as Markdown' },
+] as const
 
 type Schema = CanvasSchema & { readonly files: readonly { readonly path: string }[] }
 
@@ -287,6 +294,21 @@ function Canvas({
                   </Button>
                   <Tooltip.Content>Download the diagram as an SVG image</Tooltip.Content>
                 </Tooltip>
+                {/* Written by the server, from the project's own models: the same files
+                    `djangoer er` and `djangoer docs` write. */}
+                {TEXT_EXPORTS.map((file) => (
+                  <Tooltip key={file.name}>
+                    <a
+                      href={`/api/export/${file.name}`}
+                      download={file.name}
+                      className={buttonVariants({ variant: 'outline' })}
+                    >
+                      <LuDownload size={15} />
+                      {file.label}
+                    </a>
+                    <Tooltip.Content>{file.hint}</Tooltip.Content>
+                  </Tooltip>
+                ))}
               </>
             )}
             <Button variant="outline" size={compact ? 'sm' : 'md'} onPress={relayout}>

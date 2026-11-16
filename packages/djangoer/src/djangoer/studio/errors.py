@@ -74,3 +74,14 @@ class QueryError(StudioError):
 
     def __str__(self) -> str:
         return self.messages[0] if self.messages else "The query could not be run."
+
+
+@dataclass(frozen=True)
+class ExportError(StudioError):
+    """A file that cannot be written as asked: an extension no format has, a PNG without the
+    package that draws it."""
+
+    message: str
+
+    def __str__(self) -> str:
+        return self.message

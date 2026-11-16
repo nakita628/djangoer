@@ -41,6 +41,10 @@ dependencies = [
   "uvicorn>=0.30",
 ]
 
+[project.optional-dependencies]
+# `djangoer er -o er.png`: the SVG is drawn without it, the PNG is not.
+png = ["resvg-py>=0.2"]
+
 [project.urls]
 Repository = "https://github.com/nakita628/djangoer"
 Issues = "https://github.com/nakita628/djangoer/issues"

@@ -22,6 +22,8 @@ export default {
       'packages/studio/src/studio/client/api/index.ts',
       'packages/studio/src/studio/client/hooks/index.ts',
       'packages/studio/openapi.json',
+      // What `just example-docs` writes: committed as djangoer writes it.
+      'examples/blog/docs/**',
       // Written by the TanStack Router plugin.
       'packages/studio/src/studio/client/routeTree.gen.ts',
       // The client as it is built into the Python package.
