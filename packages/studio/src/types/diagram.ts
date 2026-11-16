@@ -18,7 +18,7 @@ export type Route = readonly Point[]
 /** Where a block's top-left corner sits on the canvas. */
 export type Position = Point
 
-export type LayoutPositions = Readonly<Record<string, Position>>
+export type LayoutPositions = { readonly [key: string]: Position }
 
 export type DiagramTheme = 'light' | 'dark'
 

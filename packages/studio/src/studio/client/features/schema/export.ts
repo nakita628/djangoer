@@ -5,6 +5,8 @@ import { downloadFile } from '../../lib/index.js'
 const EXPORT_SCALE = 2
 
 function loadImage(svg: string) {
+  // An image says it has loaded through events, not a promise: this is the one way to await it.
+  // oxlint-disable-next-line promise/avoid-new
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }))
@@ -31,6 +33,8 @@ async function renderDiagramPng(input: DiagramInput) {
   if (!context) throw new Error('Canvas is not available in this browser.')
   context.scale(EXPORT_SCALE, EXPORT_SCALE)
   context.drawImage(image, 0, 0)
+  // A canvas hands its blob to a callback: this is the one way to await it.
+  // oxlint-disable-next-line promise/avoid-new
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob)

@@ -26,8 +26,8 @@ type Enum = {
 export function EnumView({ schema, value }: { readonly schema: Schema; readonly value: Enum }) {
   const usedBy = schema.models.flatMap((model) =>
     model.fields
-      .filter((f) => f.kind === 'enum' && f.type === value.name)
-      .map((f) => ({ model: model.name, field: f.name })),
+      .filter((field) => field.kind === 'enum' && field.type === value.name)
+      .map((field) => ({ model: model.name, field: field.name })),
   )
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-auto">

@@ -8,7 +8,7 @@ import { copyText } from '../hooks/copy.js'
 import { downloadFile } from '../lib/index.js'
 import { MarkedText } from './marked-text.js'
 
-type Row = Record<string, string | number | boolean | null>
+type Row = { [key: string]: string | number | boolean | null }
 
 function compare(a: Row[string], b: Row[string]) {
   if (a === b) return 0

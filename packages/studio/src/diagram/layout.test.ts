@@ -209,7 +209,7 @@ describe('autoLayout', () => {
     const positions = autoLayout(schema)
     const boxes = Object.entries(positions).map(([name, position]) => {
       const model = schema.models.find((m) => m.name === name)
-      const value = schema.enums.find((e) => e.name === name)
+      const value = schema.enums.find((enumeration) => enumeration.name === name)
       const width = model ? NODE_WIDTH : ENUM_WIDTH
       const height = model ? nodeHeight(model) : value ? enumHeight(value) : 0
       return { name, x: position.x, y: position.y, width, height }

@@ -29,12 +29,12 @@ const client = path.join(root, 'src/studio/client/api/index.ts')
 const SCAFFOLD_IMPORT = /^import type \{ api \} from '[^']*\/app\/index'$/mu
 const APP_IMPORT = "import type api from './app.js'"
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+function isRecord(value: unknown): value is { readonly [key: string]: unknown } {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /** `{ type: 'null' }` and nothing else: the schema of the value null. */
-function isNullType(schema: Readonly<Record<string, unknown>>) {
+function isNullType(schema: { readonly [key: string]: unknown }) {
   return schema.type === 'null' && Object.keys(schema).length === 1
 }
 

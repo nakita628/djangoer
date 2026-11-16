@@ -119,10 +119,10 @@ function captionSpots(points: Route, width: number, height: number): readonly (r
   ]
   const along = [0, ...(hugs[1] ?? []), ...rings.flatMap((ring) => [-clear - ring, clear + ring])]
   return segments.map((segment) =>
-    CAPTION_STOPS.flatMap((t) => {
+    CAPTION_STOPS.flatMap((stop) => {
       const on = {
-        x: segment.a.x + (segment.b.x - segment.a.x) * t,
-        y: segment.a.y + (segment.b.y - segment.a.y) * t,
+        x: segment.a.x + (segment.b.x - segment.a.x) * stop,
+        y: segment.a.y + (segment.b.y - segment.a.y) * stop,
       }
       return segment.vertical
         ? across.map((offset) => ({ x: on.x + offset, y: on.y }))

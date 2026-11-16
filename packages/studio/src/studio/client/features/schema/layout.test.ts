@@ -50,7 +50,7 @@ describe('diagramFields', () => {
   it('drops relation fields', () => {
     expect(
       diagramFields(model('A', [field('id'), field('other', 'object'), field('role', 'enum')])).map(
-        (f) => f.name,
+        (entry) => entry.name,
       ),
     ).toStrictEqual(['id', 'role'])
   })

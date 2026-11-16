@@ -24,7 +24,7 @@ import type {
 export function diagramFields<Field extends { readonly kind: string }>(model: {
   readonly fields: readonly Field[]
 }) {
-  return model.fields.filter((f) => f.kind !== 'object')
+  return model.fields.filter((field) => field.kind !== 'object')
 }
 
 export function firstLine(text: string | null | undefined) {
@@ -157,7 +157,7 @@ export function autoLayout(schema: DiagramSchema): LayoutPositions {
   }
   const names = new Set([
     ...schema.models.map((m) => m.name),
-    ...(schema.enums ?? []).map((e) => e.name),
+    ...(schema.enums ?? []).map((enumeration) => enumeration.name),
   ])
   const edges = [
     ...schema.relations.map((relation) => ({ from: relation.from.model, to: relation.to.model })),

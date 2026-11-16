@@ -10,23 +10,29 @@ import type { UserConfig } from 'vite-plus'
  * present length (lines of code, as the rules count them), so it can only get shorter: split it,
  * then lower its number here, or drop the entry once it is under the limit.
  */
-const CEILINGS: Readonly<Record<string, { readonly function?: number; readonly file?: number }>> = {
+const CEILINGS: {
+  readonly [key: string]: {
+    readonly function?: number
+    readonly file?: number
+    readonly dependencies?: number
+  }
+} = {
   'src/studio/client/components/data-grid.tsx': { function: 403, file: 688 },
   'src/studio/client/components/details-panel.tsx': { function: 120 },
   'src/studio/client/components/fields-table.tsx': { function: 125 },
   'src/studio/client/components/model-node.tsx': { function: 130 },
   'src/studio/client/components/result-table.tsx': { function: 140 },
-  'src/studio/client/features/client/client-view.tsx': { function: 293 },
+  'src/studio/client/features/client/client-view.tsx': { function: 293, dependencies: 17 },
   'src/studio/client/features/client/result-pane.tsx': { function: 169 },
-  'src/studio/client/features/data/model-view.tsx': { function: 377, file: 463 },
-  'src/studio/client/features/editor/source-view.tsx': { function: 215 },
+  'src/studio/client/features/data/model-view.tsx': { function: 377, file: 463, dependencies: 20 },
+  'src/studio/client/features/editor/source-view.tsx': { function: 215, dependencies: 20 },
   'src/studio/client/features/palette/palette.tsx': { function: 186 },
-  'src/studio/client/features/schema/schema-view.tsx': { function: 215 },
+  'src/studio/client/features/schema/schema-view.tsx': { function: 215, dependencies: 14 },
   'src/studio/client/features/sidebar/sidebar.tsx': { function: 147 },
   'src/studio/client/features/sql/columns-view.tsx': { function: 125 },
   'src/studio/client/features/sql/flow-view.tsx': { function: 108 },
   'src/studio/client/features/sql/sql-editor.tsx': { function: 126 },
-  'src/studio/client/features/sql/sql-view.tsx': { function: 266 },
+  'src/studio/client/features/sql/sql-view.tsx': { function: 266, dependencies: 20 },
 }
 
 const SIZE = { skipBlankLines: true, skipComments: true } as const
@@ -35,16 +41,16 @@ type Lint = NonNullable<UserConfig['lint']>
 type Override = NonNullable<Lint['overrides']>[number]
 
 /** The override that holds one file to its ceiling. */
-function ceilingOverride(
-  file: string,
-  ceiling: { readonly function?: number; readonly file?: number },
-) {
+function ceilingOverride(file: string, ceiling: (typeof CEILINGS)[string]) {
   const rules: NonNullable<Override['rules']> = {}
   if (ceiling.function !== undefined) {
     rules['max-lines-per-function'] = ['error', { max: ceiling.function, ...SIZE, IIFEs: true }]
   }
   if (ceiling.file !== undefined) {
     rules['max-lines'] = ['error', { max: ceiling.file, ...SIZE }]
+  }
+  if (ceiling.dependencies !== undefined) {
+    rules['import/max-dependencies'] = ['error', { max: ceiling.dependencies }]
   }
   return { files: [file], rules } satisfies Override
 }
@@ -98,7 +104,145 @@ export const lint: Lint = {
     // a ceiling of their own below, at their present length, so they do not grow.
     'max-lines-per-function': ['error', { max: 100, ...SIZE, IIFEs: true }],
     'max-lines': ['error', { max: 350, ...SIZE }],
-    'max-dependencies': ['error', { max: 20 }],
+    // --- Hono Takibi's hardening, as packages/hono-takibi/vite.config.ts has it --------------
+    'no-underscore-dangle': ['error', { allow: ['_tag'] }],
+    'symbol-description': 'error',
+    'typescript/use-unknown-in-catch-callback-variable': 'error',
+    'typescript/return-await': 'error',
+    'unicorn/throw-new-error': 'error',
+    'import/no-self-import': 'error',
+    'import/no-absolute-path': 'error',
+    'import/no-empty-named-blocks': 'error',
+    'no-shadow-restricted-names': 'error',
+    'no-delete-var': 'error',
+    'import/named': 'error',
+    'import/newline-after-import': 'error',
+    'import/no-amd': 'error',
+    'import/no-dynamic-require': 'error',
+    'import/no-webpack-loader-syntax': 'error',
+    'no-duplicate-imports': ['error', { allowSeparateTypeImports: true }],
+    'import/max-dependencies': ['error', { max: 13 }],
+    'node/no-process-env': 'error',
+    'unicorn/no-process-exit': 'error',
+    'node/no-sync': 'error',
+    'promise/avoid-new': 'error',
+    'no-promise-executor-return': 'error',
+    'id-length': [
+      'error',
+      {
+        min: 2,
+        properties: 'never',
+        exceptions: [
+          'x',
+          'y',
+          '_',
+          'k',
+          'v',
+          's',
+          'p',
+          'n',
+          'm',
+          'i',
+          'a',
+          'b',
+          'z',
+          'T',
+          'K',
+          'A',
+          'E',
+          'M',
+        ],
+      },
+    ],
+    // Names that say nothing. Not `x` and `y`, the coordinates of the diagram; not `data`, the
+    // value React Flow hands a node; not `fn`, a token of Monaco's theme: those are the names of
+    // the APIs they belong to.
+    'id-denylist': [
+      'error',
+      'tmp',
+      'temp',
+      'foo',
+      'bar',
+      'cb',
+      'err',
+      'e',
+      'res',
+      'req',
+      'obj',
+      'val',
+      'arr',
+      'str',
+      'ret',
+      'idx',
+      'cnt',
+      'num',
+      'buf',
+      'ctx',
+      'elem',
+      'el',
+      'cur',
+    ],
+    'func-name-matching': 'error',
+    'max-depth': ['error', 4],
+    'max-nested-callbacks': ['error', 4],
+    'max-classes-per-file': ['error', 2],
+    'typescript/consistent-indexed-object-style': ['error', 'index-signature'],
+    'typescript/adjacent-overload-signatures': 'error',
+    'typescript/unified-signatures': 'error',
+    'typescript/ban-tslint-comment': 'error',
+    'typescript/no-unnecessary-qualifier': 'error',
+    'typescript/no-namespace': 'error',
+    'typescript/no-mixed-enums': 'error',
+    'typescript/prefer-enum-initializers': 'error',
+    'typescript/prefer-literal-enum-member': 'error',
+    'oxc/no-const-enum': 'error',
+    'typescript/parameter-properties': 'error',
+    'typescript/no-empty-interface': 'error',
+    'typescript/class-literal-property-style': 'error',
+    'typescript/prefer-return-this-type': 'error',
+    'typescript/related-getter-setter-pairs': 'error',
+    'accessor-pairs': 'error',
+    'grouped-accessor-pairs': 'error',
+    'class-methods-use-this': 'error',
+    'no-constructor-return': 'error',
+    'unicorn/no-static-only-class': 'error',
+    'unicorn/no-this-assignment': 'error',
+    'unicorn/prefer-class-fields': 'error',
+    'unicorn/custom-error-definition': 'error',
+    'typescript/prefer-regexp-exec': 'error',
+    'unicorn/no-console-spaces': 'error',
+    'unicorn/require-number-to-fixed-digits-argument': 'error',
+    'default-case': 'error',
+    'unicorn/switch-case-braces': ['error', 'avoid'],
+    'unicorn/switch-case-break-position': 'error',
+    'unicorn/prefer-ternary': 'error',
+    'unicorn/no-negation-in-equality-check': 'error',
+    'logical-assignment-operators': 'error',
+    'no-eq-null': 'error',
+    'sort-vars': 'error',
+    'vars-on-top': 'error',
+    'oxc/branches-sharing-code': 'error',
+    'oxc/bad-bitwise-operator': 'error',
+    'no-proto': 'error',
+    'no-alert': 'error',
+    'unicorn/no-instanceof-array': 'error',
+    'unicorn/no-new-buffer': 'error',
+    'unicorn/no-unnecessary-array-splice-count': 'error',
+    'unicorn/no-useless-iterator-to-array': 'error',
+    'unicorn/prefer-prototype-methods': 'error',
+    'unicorn/prefer-reflect-apply': 'error',
+    'unicorn/prefer-date-now': 'error',
+    'unicorn/consistent-date-clone': 'error',
+    'unicorn/prefer-event-target': 'error',
+    'unicorn/prefer-bigint-literals': 'error',
+    'unicorn/text-encoding-identifier-case': 'error',
+    'unicorn/explicit-timer-delay': 'error',
+    'unicorn/consistent-assert': 'error',
+    'unicorn/prefer-top-level-await': 'error',
+    'unicorn/require-module-attributes': 'error',
+    'jsdoc/no-blank-blocks': 'error',
+    'jsdoc/require-throws-description': 'error',
+    'jsdoc/require-yields-description': 'error',
     // --- Pedantic rules that do not fit, and why ----------------------------------------------
     // Props are declared readonly where they are written; the rule wants every parameter deeply
     // readonly, which React's events, Monaco's editor and the DOM's nodes are not and cannot be.
@@ -485,9 +629,15 @@ export const lint: Lint = {
     {
       // Playwright's tests: Node, with the page's globals in the callbacks they hand the page.
       // The unit-test rules (Vitest's) are for src/**/*.test.ts, not for these.
-      files: ['e2e/**/*.ts', 'playwright.config.ts'],
+      files: ['e2e/**/*.ts', 'scripts/**/*.ts', 'playwright.config.ts', 'vite.config.ts'],
       env: { node: true, browser: false },
       rules: {
+        // Tools run from the command line, one step after another: the synchronous file and
+        // process calls are what they are written in, and the environment is how they are told
+        // where things are.
+        'node/no-sync': 'off',
+        'node/no-process-env': 'off',
+        'unicorn/no-process-exit': 'off',
         // A test drives one page step by step: each await waits for the one before it.
         'no-await-in-loop': 'off',
         // Playwright names its own `test` and `expect`; the jest rules read them as Vitest's.
@@ -725,6 +875,8 @@ export const lint: Lint = {
       rules: {
         'max-lines-per-function': 'off',
         'max-lines': 'off',
+        // A test reads a fixture the way a script does.
+        'node/no-sync': 'off',
         'jest/no-conditional-in-test': 'off',
         'vitest/no-conditional-in-test': 'off',
       },

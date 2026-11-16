@@ -140,7 +140,7 @@ function fieldsTop(card: Box) {
 
 /** The vertical centre of a field name, or of the header when the field is not shown. */
 export function anchorY(node: PlacedNode, field: string | null) {
-  const index = field === null ? -1 : node.fields.findIndex((f) => f.name === field)
+  const index = field === null ? -1 : node.fields.findIndex((candidate) => candidate.name === field)
   if (index === -1) return node.y + NODE_HEADER_HEIGHT / 2
   const above = node.fields
     .slice(0, index)
@@ -379,5 +379,5 @@ export function renderEnum(card: PlacedEnum, index: number, palette: Palette) {
 }
 
 export function hasField(node: PlacedNode, field: string) {
-  return node.fields.some((f) => f.name === field)
+  return node.fields.some((candidate) => candidate.name === field)
 }

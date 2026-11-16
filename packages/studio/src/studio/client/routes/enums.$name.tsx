@@ -11,7 +11,7 @@ function EnumPage() {
   return (
     <SchemaGate>
       {(schema) => {
-        const value = schema.enums.find((e) => e.name === name)
+        const value = schema.enums.find((enumeration) => enumeration.name === name)
         return value ? (
           <EnumView schema={schema} value={value} />
         ) : (

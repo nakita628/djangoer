@@ -16,18 +16,18 @@ type WireEnds = {
 }
 
 /** A wire laid out: the corners it turns at, and where its caption stands, if it has one. */
-type LaidWire<W extends WireEnds> = {
-  readonly wire: W
+type LaidWire<Wire extends WireEnds> = {
+  readonly wire: Wire
   readonly points: Route
   readonly caption: Box | null
 }
 
 /** The wires laid out, in the order they came in. */
-export function layoutWires<W extends WireEnds>(
-  wires: readonly W[],
+export function layoutWires<Wire extends WireEnds>(
+  wires: readonly Wire[],
   cards: readonly Box[],
-): readonly LaidWire<W>[] {
-  const route = (wire: W, obstacles: readonly Box[]) =>
+): readonly LaidWire<Wire>[] {
+  const route = (wire: Wire, obstacles: readonly Box[]) =>
     wire.loops
       ? selfLoopPoints(wire.source, wire.target)
       : routePoints(wire.source, wire.target, obstacles)

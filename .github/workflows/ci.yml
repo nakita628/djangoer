@@ -36,7 +36,7 @@ jobs:
           node-version: '22'
           cache: true
       - run: vp install --frozen-lockfile
-      - name: Lint (ruff, import-linter, lint/studio.py, Vite+, actionlint, zizmor)
+      - name: Lint (ruff, import-linter, lint/studio.py, Vite+, knip, actionlint, zizmor)
         run: uv run just lint
       - name: Type-check (pyright, tsgo)
         run: uv run just typecheck

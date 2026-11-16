@@ -134,7 +134,7 @@ describe('buildEdges of a self relation', () => {
         },
       ],
     })
-    expect(edges.map((e) => [e.sourceHandle, e.targetHandle])).toStrictEqual([
+    expect(edges.map((edge) => [edge.sourceHandle, edge.targetHandle])).toStrictEqual([
       [sourceHandle('id'), loopTargetHandle('parentId')],
     ])
   })
@@ -156,9 +156,9 @@ describe('buildNodes', () => {
       ['Role', 'enum', { x: 0, y: 0 }],
     ])
     const first = nodes[0]
-    expect(first?.type === 'model' ? first.data.fields.map((f) => f.name) : []).toStrictEqual([
-      'id',
-    ])
+    expect(
+      first?.type === 'model' ? first.data.fields.map((entry) => entry.name) : [],
+    ).toStrictEqual(['id'])
   })
 
   it('links an enum-typed field to the card of its enum', () => {
@@ -168,7 +168,13 @@ describe('buildNodes', () => {
       models: [model('User', [field('id'), { ...field('role', 'enum'), type: 'Role' }])],
     }
     expect(
-      buildEdges(withEnum).map((e) => [e.id, e.source, e.sourceHandle, e.target, e.className]),
+      buildEdges(withEnum).map((edge) => [
+        edge.id,
+        edge.source,
+        edge.sourceHandle,
+        edge.target,
+        edge.className,
+      ]),
     ).toStrictEqual([['User.role->Role', 'User', sourceHandle('role'), 'Role', 'enum-edge']])
   })
 })
@@ -176,13 +182,13 @@ describe('buildNodes', () => {
 describe('buildEdges', () => {
   it('connects field handles for foreign keys and header handles otherwise', () => {
     expect(
-      buildEdges(schema).map((e) => [
-        e.id,
-        e.source,
-        e.sourceHandle,
-        e.target,
-        e.targetHandle,
-        e.className,
+      buildEdges(schema).map((edge) => [
+        edge.id,
+        edge.source,
+        edge.sourceHandle,
+        edge.target,
+        edge.targetHandle,
+        edge.className,
       ]),
     ).toStrictEqual([
       [
@@ -213,7 +219,7 @@ describe('buildEdges', () => {
   })
 
   it('marks both ends with the IE symbol of their cardinality', () => {
-    expect(buildEdges(schema).map((e) => [e.markerStart, e.markerEnd])).toStrictEqual([
+    expect(buildEdges(schema).map((edge) => [edge.markerStart, edge.markerEnd])).toStrictEqual([
       ['er-one', 'er-many'],
       ['er-many', 'er-many'],
       ['er-zero-one', 'er-zero-many'],
@@ -243,7 +249,7 @@ describe('highlightEdges', () => {
 
   it('highlights edges touching a selected model and dims the rest', () => {
     expect(
-      highlightEdges(buildEdges(schema), ['Tag']).map((e) => [e.id, e.className]),
+      highlightEdges(buildEdges(schema), ['Tag']).map((edge) => [edge.id, edge.className]),
     ).toStrictEqual([
       ['User.id->Post.authorId', 'relation-edge relation-edge--inferred is-dimmed'],
       [

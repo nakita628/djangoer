@@ -214,7 +214,7 @@ function schemaHover(tables: readonly EditorTable[]) {
     const aliases = aliasesOf(view.state.doc.toString(), tables)
     const from = line.from + start
     const to = line.from + end
-    const qualified = text[start - 1] === '.' ? text.slice(0, start - 1).match(/[\w$"`]+$/u) : null
+    const qualified = text[start - 1] === '.' ? /[\w$"`]+$/u.exec(text.slice(0, start - 1)) : null
     if (qualified === null && text[start - 1] !== '.') {
       const table = tables.find((candidate) => fold(candidate.name) === folded)
       if (table !== undefined) {
@@ -237,7 +237,7 @@ function schemaHover(tables: readonly EditorTable[]) {
         ? [...new Set(aliases.values())]
         : [
             aliases.get(fold(qualified[0])) ??
-              tables.find((t) => fold(t.name) === fold(qualified[0])),
+              tables.find((table) => fold(table.name) === fold(qualified[0])),
           ]
     for (const table of scope) {
       const column = table?.columns.find((candidate) => fold(candidate.name) === folded)

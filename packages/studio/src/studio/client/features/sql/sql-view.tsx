@@ -97,7 +97,7 @@ export function SqlView({
     readonly start: number
     readonly end: number
   } | null>(null)
-  const [paramInputs, setParamInputs] = useState<Readonly<Record<string, string>>>(() =>
+  const [paramInputs, setParamInputs] = useState<{ readonly [key: string]: string }>(() =>
     paramInputsOf(initialParams),
   )
 

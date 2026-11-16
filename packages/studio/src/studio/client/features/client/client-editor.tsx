@@ -4,7 +4,12 @@ import type { editor as MonacoEditor } from 'monaco-editor/editor/editor.api.js'
 import { useEffect, useRef } from 'react'
 
 import { useUiStore } from '../../lib/index.js'
-import { EDITOR_OPTIONS, setupMonaco, themeName } from '../editor/monaco.js'
+import {
+  EDITOR_OPTIONS,
+  refuseTextSubstitutions,
+  setupMonaco,
+  themeName,
+} from '../editor/monaco.js'
 import { registry } from './editor-state.js'
 import { applyClientMarkers, setupClientEditor } from './monaco-query.js'
 import type { ClientMarker } from './monaco-query.js'
@@ -75,6 +80,7 @@ export function ClientEditor({
 
   const onMount: OnMount = (mounted) => {
     editor.current = mounted
+    refuseTextSubstitutions(mounted)
     mounted.addCommand(
       // oxlint-disable-next-line no-bitwise -- Monaco keybindings are bit flags by design
       monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,

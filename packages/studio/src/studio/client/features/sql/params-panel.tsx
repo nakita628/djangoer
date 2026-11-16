@@ -13,7 +13,7 @@ export function ParamsPanel({
   onChange,
 }: {
   readonly parameters: Analysis['statements'][number]['parameters']
-  readonly inputs: Readonly<Record<string, string>>
+  readonly inputs: { readonly [key: string]: string }
   readonly onChange: (key: string, value: string) => void
 }) {
   if (parameters.length === 0) return null

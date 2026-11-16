@@ -51,8 +51,8 @@ function TocModel({ model }: { readonly model: Docs['models'][number] }) {
           Fields
         </a>
         <TocList
-          items={model.fields.map((f) => f.name)}
-          hrefOf={(f) => `#model-${model.name}-${f}`}
+          items={model.fields.map((field) => field.name)}
+          hrefOf={(field) => `#model-${model.name}-${field}`}
         />
       </div>
       <div className="mt-1 ml-2">
@@ -100,8 +100,8 @@ export function Toc({ docs }: { readonly docs: Docs }) {
               Input Types
             </a>
             <TocList
-              items={docs.inputTypes.map((t) => t.name)}
-              hrefOf={(t) => `#${typeSectionId('inputType', t)}`}
+              items={docs.inputTypes.map((typeName) => typeName.name)}
+              hrefOf={(typeName) => `#${typeSectionId('inputType', typeName)}`}
             />
           </li>
         ) : null}
@@ -114,8 +114,8 @@ export function Toc({ docs }: { readonly docs: Docs }) {
               Output Types
             </a>
             <TocList
-              items={docs.outputTypes.map((t) => t.name)}
-              hrefOf={(t) => `#${typeSectionId('outputType', t)}`}
+              items={docs.outputTypes.map((typeName) => typeName.name)}
+              hrefOf={(typeName) => `#${typeSectionId('outputType', typeName)}`}
             />
           </li>
         ) : null}
@@ -124,8 +124,8 @@ export function Toc({ docs }: { readonly docs: Docs }) {
             Enum Types
           </a>
           <TocList
-            items={docs.enumTypes.map((t) => t.name)}
-            hrefOf={(t) => `#${typeSectionId('enum', t)}`}
+            items={docs.enumTypes.map((typeName) => typeName.name)}
+            hrefOf={(typeName) => `#${typeSectionId('enum', typeName)}`}
           />
         </li>
       </ul>

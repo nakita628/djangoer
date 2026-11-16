@@ -19,7 +19,13 @@ import { useUiStore } from '../../lib/index.js'
 import { problemMessage } from '../../lib/problem.js'
 import { hasText } from '../../lib/text.js'
 import { SchemaCanvas } from '../schema/schema-view.js'
-import { EDITOR_OPTIONS, PYTHON_LANGUAGE_ID, setupMonaco, themeName } from './monaco.js'
+import {
+  EDITOR_OPTIONS,
+  PYTHON_LANGUAGE_ID,
+  refuseTextSubstitutions,
+  setupMonaco,
+  themeName,
+} from './monaco.js'
 import { blockAtLine } from './source-blocks.js'
 import { setupSourceInference } from './source-inference.js'
 
@@ -112,6 +118,7 @@ function SourceEditor({
 
   const onMount: OnMount = (editor) => {
     mounted.current = editor
+    refuseTextSubstitutions(editor)
     editor.onDidChangeCursorPosition((event) => {
       latest.current.onCursorLine(event.position.lineNumber)
     })
@@ -174,12 +181,12 @@ export function SourceView({
   const [chosenPath, setChosenPath] = useState<string | null>(null)
   const [cursorLine, setCursorLine] = useState(1)
   const { copied, copy } = useCopy()
-  const [drafts, setDrafts] = useState<Readonly<Record<string, Draft>>>({})
+  const [drafts, setDrafts] = useState<{ readonly [key: string]: Draft }>({})
   // The text of the last save of each file: until the server has read it back, the file on
   // disk and the editor differ, and that is not an unsaved change.
-  const [saved, setSaved] = useState<Readonly<Record<string, string>>>({})
+  const [saved, setSaved] = useState<{ readonly [key: string]: string }>({})
   // What each file held, as the page knew it, when it was last saved over.
-  const [beforeSave, setBeforeSave] = useState<Readonly<Record<string, string>>>({})
+  const [beforeSave, setBeforeSave] = useState<{ readonly [key: string]: string }>({})
   const write = usePutSchemaFiles({
     mutation: {
       onSuccess: (written) => {

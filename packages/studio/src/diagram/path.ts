@@ -8,21 +8,23 @@ export function round(value: number) {
   return Math.round(value * 100) / 100
 }
 
-function bend(a: Point, b: Point, c: Point) {
+function bend(from: Point, corner: Point, to: Point) {
   const size = Math.min(
-    Math.hypot(a.x - b.x, a.y - b.y) / 2,
-    Math.hypot(b.x - c.x, b.y - c.y) / 2,
+    Math.hypot(from.x - corner.x, from.y - corner.y) / 2,
+    Math.hypot(corner.x - to.x, corner.y - to.y) / 2,
     EDGE_BEND_RADIUS,
   )
-  const { x, y } = b
-  if ((a.x === x && x === c.x) || (a.y === y && y === c.y)) return `L${round(x)} ${round(y)}`
-  if (a.y === y) {
-    const xDir = a.x < c.x ? -1 : 1
-    const yDir = a.y < c.y ? 1 : -1
+  const { x, y } = corner
+  if ((from.x === x && x === to.x) || (from.y === y && y === to.y)) {
+    return `L${round(x)} ${round(y)}`
+  }
+  if (from.y === y) {
+    const xDir = from.x < to.x ? -1 : 1
+    const yDir = from.y < to.y ? 1 : -1
     return `L ${round(x + size * xDir)},${round(y)}Q ${round(x)},${round(y)} ${round(x)},${round(y + size * yDir)}`
   }
-  const xDir = a.x < c.x ? 1 : -1
-  const yDir = a.y < c.y ? -1 : 1
+  const xDir = from.x < to.x ? 1 : -1
+  const yDir = from.y < to.y ? -1 : 1
   return `L ${round(x)},${round(y + size * yDir)}Q ${round(x)},${round(y)} ${round(x + size * xDir)},${round(y)}`
 }
 

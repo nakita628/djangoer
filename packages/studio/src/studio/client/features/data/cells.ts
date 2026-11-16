@@ -1,4 +1,4 @@
-type Row = Record<string, string | number | boolean | null>
+type Row = { [key: string]: string | number | boolean | null }
 
 type Field = {
   readonly name: string
@@ -92,7 +92,7 @@ export function toCsv(columns: readonly string[], rows: readonly Row[]) {
   const escape = escapeCsv
   return [
     columns.join(','),
-    ...rows.map((row) => columns.map((c) => escape(row[c] ?? null)).join(',')),
+    ...rows.map((row) => columns.map((column) => escape(row[column] ?? null)).join(',')),
   ].join('\n')
 }
 
@@ -108,13 +108,13 @@ function flattenTsv(value: Row[string]) {
 export function toTsv(columns: readonly string[], rows: readonly Row[]) {
   return [
     columns.join('\t'),
-    ...rows.map((row) => columns.map((c) => flattenTsv(row[c] ?? null)).join('\t')),
+    ...rows.map((row) => columns.map((column) => flattenTsv(row[column] ?? null)).join('\t')),
   ].join('\n')
 }
 
 export function toJson(columns: readonly string[], rows: readonly Row[]) {
   return JSON.stringify(
-    rows.map((row) => Object.fromEntries(columns.map((c) => [c, row[c] ?? null]))),
+    rows.map((row) => Object.fromEntries(columns.map((column) => [column, row[column] ?? null]))),
     null,
     2,
   )

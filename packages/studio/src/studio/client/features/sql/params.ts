@@ -36,7 +36,7 @@ export function bindValues(
     readonly tsType: string
     readonly nullable: boolean | null
   }[],
-  inputs: Readonly<Record<string, string>>,
+  inputs: { readonly [key: string]: string },
 ) {
   return parameters.map((parameter) =>
     parseParamInput(parameter, inputs[paramKey(parameter)] ?? defaultParamInput(parameter)),

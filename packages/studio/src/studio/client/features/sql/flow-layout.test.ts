@@ -49,7 +49,9 @@ describe('nodeLines', () => {
     const lines = nodeLines(node('t', 'table', { columns }))
     expect(lines).toHaveLength(MAX_LINES)
     expect(lines.at(-1)).toBe('… 4 more')
-    expect(lines.slice(0, -1)).toStrictEqual(columns.slice(0, MAX_LINES - 1).map((c) => c.name))
+    expect(lines.slice(0, -1)).toStrictEqual(
+      columns.slice(0, MAX_LINES - 1).map((entry) => entry.name),
+    )
   })
 
   it('shows exactly the limit without folding', () => {

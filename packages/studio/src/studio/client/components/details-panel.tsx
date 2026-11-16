@@ -60,7 +60,7 @@ export function DetailsPanel({
 }) {
   const primaryKey = new Set(model.primaryKey)
   const relations = schema.relations.filter(
-    (r) => r.from.model === model.name || r.to.model === model.name,
+    (relation) => relation.from.model === model.name || relation.to.model === model.name,
   )
   const indexAttributes = new Set(model.indexes.map((i) => i.attribute))
   const modelAttributes = model.attributes.filter((a) => !indexAttributes.has(a))

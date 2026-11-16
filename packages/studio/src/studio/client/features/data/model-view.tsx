@@ -35,7 +35,7 @@ import { keyLabel, keyOf, rowId, toCsv, toJson, toTsv } from './cells.js'
 import { loadHiddenColumns, saveHiddenColumns } from './columns.js'
 import { PAGE_SIZE } from './paging.js'
 
-type Row = Record<string, string | number | boolean | null>
+type Row = { [key: string]: string | number | boolean | null }
 
 type Field = {
   readonly name: string
@@ -187,7 +187,7 @@ export function ModelView({
   const saving = insert.isPending || update.isPending || remove.isPending
   const page = rows.data ?? null
   const rowKey = page?.key ?? []
-  const scalars = model.fields.filter((f) => f.kind !== 'object').map((f) => f.name)
+  const scalars = model.fields.filter((entry) => entry.kind !== 'object').map((entry) => entry.name)
   const columns = scalars.filter((name) => !hidden.has(name))
   const param = { modelName: model.name }
   const pageRows = page?.rows ?? []
@@ -348,7 +348,7 @@ export function ModelView({
               className="ml-auto"
               aria-label="Toggle details"
               onPress={() => {
-                setDetails((d) => !d)
+                setDetails((shown) => !shown)
               }}
             >
               <LuInfo />

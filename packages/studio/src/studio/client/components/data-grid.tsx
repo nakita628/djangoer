@@ -27,7 +27,7 @@ import { FieldIcon } from './field-icon.js'
 import { fieldTypeLabel } from './labels.js'
 import { MarkedText } from './marked-text.js'
 
-type Row = Record<string, string | number | boolean | null>
+type Row = { [key: string]: string | number | boolean | null }
 
 type Field = {
   readonly name: string
@@ -90,7 +90,7 @@ function enumValues(schema: Schema, field: Field) {
   // A row holds what the column stores — the value of a choice, not the name of its member.
   return (
     schema.enums
-      .find((e) => e.name === field.type)
+      .find((enumeration) => enumeration.name === field.type)
       ?.values.map((value) => value.dbName ?? value.name) ?? []
   )
 }
@@ -174,8 +174,8 @@ function NewRowCells({
 }: {
   readonly fields: readonly Field[]
   readonly schema: Schema
-  readonly draft: Readonly<Record<string, string>>
-  readonly onDraftChange: (draft: Readonly<Record<string, string>>) => void
+  readonly draft: { readonly [key: string]: string }
+  readonly onDraftChange: (draft: { readonly [key: string]: string }) => void
   readonly onSubmit: () => void
 }) {
   return fields.map((field) => {
@@ -338,17 +338,17 @@ export function DataGrid({
   // Which cell is picked is never state: a page of a hundred rows is redrawn whole for every
   // change of state here, and the pointer changes cells many times a second. The picked cell is
   // the one holding the focus, read off the DOM when a key asks for it, and drawn by CSS.
-  const [draft, setDraft] = useState<Readonly<Record<string, string>>>({})
-  const columns = model.fields.filter((f) => f.kind !== 'object')
+  const [draft, setDraft] = useState<{ readonly [key: string]: string }>({})
+  const columns = model.fields.filter((field) => field.kind !== 'object')
   // A row being typed in is a whole row, so the form shows every column while it is open: the
   // one required field somebody folded away is not a row that cannot be saved.
-  const fields = adding ? columns : columns.filter((f) => !hiddenColumns.has(f.name))
-  const names = fields.map((f) => f.name)
+  const fields = adding ? columns : columns.filter((field) => !hiddenColumns.has(field.name))
+  const names = fields.map((field) => field.name)
   const primaryKey = new Set(model.primaryKey)
   const editable = rowKey.length > 0
   // A model without a key still has to draw without two rows colliding, so it is identified by
   // everything it holds — enough for React and for the grid, not enough to write back through.
-  const identity = editable ? rowKey : columns.map((f) => f.name)
+  const identity = editable ? rowKey : columns.map((field) => field.name)
   const from = total === 0 ? 0 : skip + 1
   const to = Math.min(skip + rows.length, total)
   // With a table of any size the two arrows matter more than the two steps: the last page is

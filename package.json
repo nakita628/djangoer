@@ -6,13 +6,18 @@
   "scripts": {
     "build": "pnpm -F @djangoer/studio build",
     "dev": "pnpm -F @djangoer/studio dev",
-    "check": "pnpm -F @djangoer/studio check",
-    "test": "pnpm -F @djangoer/studio test",
-    "generate": "pnpm -F @djangoer/studio generate",
+    "check": "vp fmt --check && pnpm -F @djangoer/studio check && pnpm knip",
+    "fix": "vp fmt && pnpm -F @djangoer/studio exec vp lint --fix",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
-    "lint": "pnpm -F @djangoer/studio lint",
-    "test:e2e": "pnpm -F @djangoer/studio test:e2e"
+    "lint": "pnpm -F @djangoer/studio lint && pnpm knip",
+    "knip": "knip --treat-config-hints-as-errors",
+    "test": "pnpm -F @djangoer/studio test",
+    "test:e2e": "pnpm -F @djangoer/studio test:e2e",
+    "generate": "pnpm -F @djangoer/studio generate"
+  },
+  "devDependencies": {
+    "knip": "^6.45.1"
   },
   "packageManager": "pnpm@11.7.0"
 }

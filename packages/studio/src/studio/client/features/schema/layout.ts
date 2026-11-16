@@ -14,7 +14,10 @@ export {
 // Stored positions win; blocks the store does not know are placed by dagre and blocks that
 // left the schema are forgotten.
 export function positionsFor(schema: DiagramSchema, stored: LayoutPositions): LayoutPositions {
-  const names = [...schema.models.map((m) => m.name), ...(schema.enums ?? []).map((e) => e.name)]
+  const names = [
+    ...schema.models.map((m) => m.name),
+    ...(schema.enums ?? []).map((enumeration) => enumeration.name),
+  ]
   const complete = names.every((name) => stored[name] !== undefined)
   const computed = complete ? {} : autoLayout(schema)
   return Object.fromEntries(

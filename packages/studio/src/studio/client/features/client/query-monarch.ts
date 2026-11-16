@@ -46,7 +46,7 @@ const KEYWORDS = [
 const LITERALS = ['True', 'False', 'None'] as const
 
 /** A name of a query: Python's identifier, which is also what Monaco takes for a word here. */
-export const WORD_PATTERN = /-?\d*\.\d\w*|[A-Za-z_]\w*/u
+const WORD_PATTERN = /-?\d*\.\d\w*|[A-Za-z_]\w*/u
 
 /** The Monarch tokenizer for a Django ORM query. */
 export const QUERY_MONARCH: languages.IMonarchLanguage = {

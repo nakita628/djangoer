@@ -92,7 +92,7 @@ function enumEdges(schema: CanvasSchema): readonly Edge[] {
 
 export function buildEdges(schema: CanvasSchema): readonly Edge[] {
   const scalarFields = new Map(
-    schema.models.map((m) => [m.name, new Set(diagramFields(m).map((f) => f.name))]),
+    schema.models.map((m) => [m.name, new Set(diagramFields(m).map((field) => field.name))]),
   )
   const hasField = (model: string, field: string) => scalarFields.get(model)?.has(field) ?? false
   const relations = schema.relations.map((relation) => {

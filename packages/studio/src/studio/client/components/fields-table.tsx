@@ -45,7 +45,10 @@ function TypeLink({ field, schema }: { readonly field: Field; readonly schema: S
       </Link>
     )
   }
-  if (field.kind === 'enum' && schema.enums.some((e) => e.name === field.type)) {
+  if (
+    field.kind === 'enum' &&
+    schema.enums.some((enumeration) => enumeration.name === field.type)
+  ) {
     return (
       <Link
         className="font-mono text-code font-semibold text-enum hover:underline"
@@ -80,15 +83,15 @@ export function FieldsTable({
     highlighted.current?.scrollIntoView({ block: 'center' })
   }, [highlight])
   const fields = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return q === ''
+    const needle = query.trim().toLowerCase()
+    return needle === ''
       ? model.fields
       : model.fields.filter(
-          (f) =>
-            f.name.toLowerCase().includes(q) ||
-            f.type.toLowerCase().includes(q) ||
-            f.attributes.some((a) => a.toLowerCase().includes(q)) ||
-            (f.documentation ?? '').toLowerCase().includes(q),
+          (field) =>
+            field.name.toLowerCase().includes(needle) ||
+            field.type.toLowerCase().includes(needle) ||
+            field.attributes.some((a) => a.toLowerCase().includes(needle)) ||
+            (field.documentation ?? '').toLowerCase().includes(needle),
         )
   }, [model, query])
   return (

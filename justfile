@@ -51,7 +51,8 @@ fmt:
 
 # Lint and check formatting without changing files. The server: ruff for the language,
 # import-linter for the layers, lint/studio.py for the conventions inside them. The client:
-# Vite+ (oxlint, type-aware). The workflows: actionlint and zizmor
+# Vite+ (oxlint, type-aware) and knip (unused files, dependencies and exports). The workflows:
+# actionlint and zizmor
 lint:
     uv run ruff check .
     uv run ruff format --check .
