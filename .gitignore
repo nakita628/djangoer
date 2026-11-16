@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Node
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+.vite/
+.tanstack/
+
+# The Studio client build, written by `pnpm build` and shipped in the wheel
+packages/djangoer/src/djangoer/studio/static/
+
+# Tests
+coverage/
+test-results/
+playwright-report/
+
+# Local databases
+*.sqlite3
+*.sqlite3-journal
+*.db
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+# The workspace's editor settings and recommended extensions are shared; nothing else of .vscode.
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# E2E: the throwaway project Studio runs on, and the traces of failed tests
+packages/studio/e2e/.workspace/
+packages/studio/e2e/.results/

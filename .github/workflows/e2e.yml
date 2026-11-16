@@ -1,0 +1,82 @@
+name: E2E
+
+# Studio's end-to-end suite (packages/studio/e2e): Playwright starts `djangoer studio` through
+# e2e/serve.ts on a throwaway copy of examples/blog, migrated and seeded, and drives the built
+# client in Chromium: every page, the writes to the database, the downloads, and models.py
+# edited, saved and followed on disk. This is separate from CI (ci.yml), which owns the lint,
+# the type checks and the unit suites.
+#
+# Action versions are tracked by Renovate, which pins each one to its digest and keeps the
+# @vX.Y.Z tag as a comment.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    # The suite runs in about a minute; this only bounds a hung browser or a server that never
+    # answers.
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/studio
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The server is the Python package, run from the workspace with uv.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+        working-directory: .
+      # Node 24: e2e/serve.ts is handed to node as TypeScript.
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version: '24'
+          cache: true
+      - run: vp install --frozen-lockfile
+        working-directory: .
+      # The suite drives the client as the wheel ships it, so the build is part of the setup.
+      - run: vp run build
+        working-directory: .
+
+      - name: Resolve the pinned Playwright version
+        id: playwright
+        run: echo "version=$(vp exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      # Chromium is pinned per Playwright version, so it is cached under that version alone. The
+      # system libraries it needs are apt packages outside the cache, hence install-deps on a hit.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browser
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.browser.outputs.cache-hit != 'true'
+        run: vp exec playwright install --with-deps chromium
+      - if: steps.browser.outputs.cache-hit == 'true'
+        run: vp exec playwright install-deps chromium
+
+      # CI is set on GitHub Actions, which turns on the config's single retry and its `github`
+      # reporter (failures are annotated on the diff).
+      - name: E2E (Studio in Chromium)
+        run: vp exec playwright test
+
+      # Traces of the failed attempts (trace: 'retain-on-failure').
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-traces
+          path: packages/studio/e2e/.results
+          if-no-files-found: ignore
+          retention-days: 7

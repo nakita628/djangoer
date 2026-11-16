@@ -1,1 +1,1 @@
-# djangoer
+packages/djangoer/README.md

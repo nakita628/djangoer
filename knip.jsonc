@@ -1,0 +1,49 @@
+{
+    "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+    // Knip finds unused files, dependencies and exports (`pnpm knip`, also part of `pnpm lint`).
+    // Everything below is something the import graph cannot see: a file a CLI reads by name, a
+    // file a tool writes. An entry here needs its reason beside it; code that is simply unused is
+    // deleted instead.
+    "workspaces": {
+        ".": {
+            "entry": [
+                // Read by `vp fmt`; a plain object, so no Vite+ plugin of knip's recognises it.
+                "vite.config.ts",
+            ],
+            "ignoreBinaries": [
+                // Vite+ is installed once, in packages/studio (see vite.config.ts); the root scripts run
+                // its `vp` from there.
+                "vp",
+                // The E2E workflow runs Playwright in packages/studio, which lists @playwright/test.
+                "playwright",
+            ],
+        },
+        "packages/studio": {
+            "entry": [
+                // Read by the hono-takibi CLI that scripts/generate.ts runs, one per output.
+                "hono-takibi.config.ts",
+                "hono-takibi.hooks.config.ts",
+            ],
+            "ignoreDependencies": [
+                // Only named in `declare module` (src/studio/client/main.tsx): the router's `Register`
+                // is declared there, so the type is augmented in that package.
+                "@tanstack/router-core",
+            ],
+            "ignoreBinaries": [
+                // The Python side: the E2E suite runs the example project through uv, which is not an
+                // npm package.
+                "uv",
+            ],
+            "ignoreIssues": {
+                // Written by hono-takibi: every query and mutation of the API gets its hooks, whether or
+                // not a page uses them yet.
+                "src/studio/client/hooks/index.ts": ["exports"],
+                // Written by the TanStack Router plugin.
+                "src/studio/client/routeTree.gen.ts": ["types"],
+                // `EDGE_OFFSET` is one grid step today, but it is how far an edge stands off a card, not
+                // the grid: the two are named apart so either can change.
+                "src/constants/diagram.ts": ["duplicates"],
+            },
+        },
+    },
+}

@@ -1,0 +1,119 @@
+name: CI
+
+# Action versions are tracked by Renovate, which pins each one to its digest and keeps the
+# @vX.Y.Z tag as a comment.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - name: Install workspace
+        run: uv sync --locked
+      # `just lint` also lints the client, which needs its dependencies.
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version: '22'
+          cache: true
+      - run: vp install --frozen-lockfile
+      - name: Lint (ruff, import-linter, lint/studio.py, Vite+, knip, actionlint, zizmor)
+        run: uv run just lint
+      - name: Type-check (pyright, tsgo)
+        run: uv run just typecheck
+
+  test:
+    name: Test (Python ${{ matrix.python }}, Django ${{ matrix.django }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest and the newest Python each Django series supports, from the oldest series
+        # the package allows (django>=4.2) to the latest release.
+        include:
+          - { python: '3.10', django: '4.2' }
+          - { python: '3.12', django: '4.2' }
+          - { python: '3.10', django: '5.2' }
+          - { python: '3.13', django: '5.2' }
+          - { python: '3.12', django: '6.0' }
+          - { python: '3.14', django: 'latest' }
+    env:
+      UV_PYTHON: ${{ matrix.python }}
+      DJANGO: ${{ matrix.django }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - name: Install workspace
+        run: uv sync --locked
+      - name: Test (pytest, on the Django of the matrix)
+        run: |
+          if [ "$DJANGO" = "latest" ]; then
+            uv run --with "django" --upgrade-package django pytest
+          else
+            uv run --with "django~=$DJANGO.0" pytest
+          fi
+
+  client:
+    name: Studio client and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version: '22'
+          cache: true
+      - run: vp install --frozen-lockfile
+      # setup-vp puts `vp` on PATH, not `pnpm`; `vp run` hands its bundled pnpm to the script.
+      # openapi.json is checked against the server by pytest; here, what is generated from it.
+      - name: Check that the generated type, client and hooks are up to date
+        run: |
+          vp run generate
+          git diff --exit-code -- packages/studio/src/studio/client/api packages/studio/src/studio/client/hooks/index.ts
+      - name: Check formatting
+        run: vp run fmt:check
+      - name: Lint and type-check
+        run: vp run check
+      - name: Test
+        run: vp run test
+      - name: Build the client into the package
+        run: vp run build
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - name: Build the wheel and the sdist
+        run: uv build --package djangoer --out-dir dist
+      # What a release would ship: the wheel carries the built client, and the installed command
+      # starts in an environment that has nothing but the wheel and Django.
+      - name: Check the wheel
+        run: |
+          set -euo pipefail
+          WHEEL=$(ls dist/*.whl)
+          python3 -c 'import sys, zipfile; names = zipfile.ZipFile(sys.argv[1]).namelist(); assert "djangoer/studio/static/index.html" in names, "the wheel has no built client"; print(len(names), "files")' "$WHEEL"
+          uv run --no-project --isolated --with "$WHEEL" djangoer --version

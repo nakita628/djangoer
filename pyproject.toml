@@ -1,0 +1,264 @@
+# uv workspace root (not a package itself). `uv sync` installs packages/djangoer editable; the
+# Studio client under packages/studio is built with pnpm into it.
+[project]
+name = "djangoer-workspace"
+version = "0.0.0"
+description = "The djangoer workspace: the package, the Studio client and the examples"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/djangoer"]
+
+[tool.uv.sources]
+djangoer = { workspace = true }
+
+[dependency-groups]
+dev = [
+  "djangoer",
+  "actionlint-py>=1.7.12.25",
+  "pytest>=8",
+  "ruff>=0.8",
+  "rust-just>=1.59.0",
+  # zizmor needs Python 3.11; the tests still run on 3.10, without it.
+  "zizmor>=1.31.1; python_version >= '3.11'",
+  "httpx2>=2.14.0",
+  "import-linter>=2.15",
+  "pyright>=1.1.400",
+  "jedi>=0.19",
+]
+
+[tool.pytest.ini_options]
+addopts = ["--strict-markers", "--strict-config"]
+testpaths = ["packages/djangoer/tests", "lint"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["node_modules", "packages/studio"]
+
+[tool.ruff.format]
+# Code in a docstring is formatted as the code around it is.
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+  "E", # pycodestyle errors
+  "W", # pycodestyle warnings
+  "F", # pyflakes
+  "I", # isort
+  "N", # pep8-naming
+  "A", # flake8-builtins
+  "UP", # pyupgrade
+  "B", # flake8-bugbear
+  "BLE", # blind except: a bare `except Exception` has to say why
+  "C4", # flake8-comprehensions
+  "SIM", # flake8-simplify
+  "PIE", # flake8-pie
+  "PT", # flake8-pytest-style
+  "PERF", # perflint
+  "FURB", # refurb
+  "PGH", # pygrep-hooks (blanket noqa / type: ignore)
+  "ISC", # implicit string concatenation
+  "RET", # returns
+  "ARG", # unused arguments
+  "PTH", # pathlib over os.path
+  "DTZ", # naive datetimes
+  "ERA", # commented-out code
+  "S", # bandit: exec, eval, SQL built from strings, each excused where it is the feature
+  "T20", # print
+  "TID", # banned imports
+  "TRY", # exception handling
+  "PLC", # pylint conventions
+  "PLE", # pylint errors
+  "PLW", # pylint warnings
+  "RUF", # ruff-specific
+]
+ignore = [
+  # The formatter owns line length.
+  "E501",
+  # zip(strict=) needs no check where both sides are built together.
+  "B905",
+  "SIM105",
+  "SIM101",
+  # Relative imports are how the layers of the Studio name one another (`from ..usecases import`).
+  "TID252",
+  # A loop that appends under several conditions reads better than the comprehension it could be.
+  "PERF401",
+  # try/except in a loop is how one bad field is skipped without losing the others.
+  "PERF203",
+  # A message written where the exception is raised is where a reader looks for it.
+  "TRY003",
+]
+
+[tool.ruff.lint.flake8-builtins]
+# Every function of a layer takes its one argument as `input`, as in Hekireki (lint/studio.py).
+# The builtin of that name reads a line from a terminal, which a server never does.
+builtins-ignorelist = ["input"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# What can go wrong is a value (errors.py) carried in a Result, not an HTTP exception.
+"fastapi.HTTPException".msg = "Return a Failure with an error of errors.py; handlers/problems.py maps it to its problem."
+"returns.unsafe".msg = "Match the Result (handlers/respond.py) instead of unwrapping it."
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, build SQL for the database under test and name fixtures after what they give.
+"packages/djangoer/tests/**" = [
+  "S101",
+  "S105",
+  "S310",
+  "S608",
+  "ARG001",
+  "PLC0415",
+  "DTZ",
+  "PT018",
+  "PT022",
+  "RUF012",
+]
+"lint/test_*.py" = ["S101", "E402"]
+# The example is a Django project as its docs write one.
+"examples/**" = ["S105", "S311", "RUF012", "DTZ", "ARG002", "PLC0415"]
+# The command line prints: that is its output.
+# It also imports Django only once the settings module is known.
+"packages/djangoer/src/djangoer/cli.py" = ["T201", "PLC0415"]
+# A management command is written as Django's base class has it.
+"packages/djangoer/src/djangoer/management/commands/*.py" = ["ARG002", "RUF012"]
+"packages/djangoer/src/djangoer/studio/openapi.py" = ["T201"]
+# A process of its own: it answers on stdout, imports Django once the edited file is in place,
+# and implements the import protocol's methods as Python calls them.
+"packages/djangoer/src/djangoer/studio/preview_worker.py" = ["T201", "PLC0415", "ARG002"]
+"lint/*.py" = ["T201"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["djangoer"]
+
+# ---------------------------------------------------------------- import-linter
+# The layers of the Studio server, held to what each may import (`uv run lint-imports`).
+# handlers → usecases → services → domain; the contract and the errors sit beside them, and
+# know none of them.
+[tool.importlinter]
+root_package = "djangoer"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: handlers, then use cases, then services, then the domain"
+type = "layers"
+layers = [
+  "djangoer.studio.handlers",
+  "djangoer.studio.usecases",
+  "djangoer.studio.services",
+  "djangoer.studio.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "A handler calls use cases, never a service or the domain behind them"
+type = "forbidden"
+source_modules = ["djangoer.studio.handlers"]
+forbidden_modules = ["djangoer.studio.services", "djangoer.studio.domain"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "A use case goes through services: it does not reach into the domain"
+type = "forbidden"
+source_modules = ["djangoer.studio.usecases"]
+forbidden_modules = ["djangoer.studio.domain"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Use cases sit side by side: what two share belongs in a service"
+type = "independence"
+modules = [
+  "djangoer.studio.usecases.client",
+  "djangoer.studio.usecases.database",
+  "djangoer.studio.usecases.docs",
+  "djangoer.studio.usecases.schema",
+]
+
+[[tool.importlinter.contracts]]
+name = "Each service is one kind of effect: a use case calls both, not one the other"
+type = "independence"
+modules = [
+  "djangoer.studio.services.client",
+  "djangoer.studio.services.database",
+  "djangoer.studio.services.docs",
+  "djangoer.studio.services.schema",
+]
+
+[[tool.importlinter.contracts]]
+name = "The domain knows nothing of HTTP or of the contract"
+type = "forbidden"
+source_modules = ["djangoer.studio.domain"]
+forbidden_modules = [
+  "fastapi",
+  "starlette",
+  "uvicorn",
+  "pydantic",
+  "djangoer.studio.contract",
+  "djangoer.studio.app",
+  "djangoer.studio.server",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Only the domain and the services touch Django"
+type = "forbidden"
+source_modules = [
+  "djangoer.studio.handlers",
+  "djangoer.studio.usecases",
+  "djangoer.studio.contract",
+  "djangoer.studio.errors",
+]
+forbidden_modules = ["django"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "The brands and the inputs are below every layer: they know none of them"
+type = "forbidden"
+source_modules = ["djangoer.studio.brands", "djangoer.studio.inputs"]
+forbidden_modules = [
+  "django",
+  "fastapi",
+  "starlette",
+  "returns",
+  "djangoer.studio.domain",
+  "djangoer.studio.services",
+  "djangoer.studio.usecases",
+  "djangoer.studio.handlers",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "The contract is Pydantic alone, and the errors plain records"
+type = "forbidden"
+source_modules = ["djangoer.studio.contract", "djangoer.studio.errors"]
+forbidden_modules = [
+  "fastapi",
+  "starlette",
+  "returns",
+  "djangoer.studio.domain",
+  "djangoer.studio.services",
+  "djangoer.studio.usecases",
+  "djangoer.studio.handlers",
+]
+allow_indirect_imports = true
+
+# ---------------------------------------------------------------- pyright
+# The layers Studio types end to end: the contract, the errors, the services, the use cases, the
+# handlers and the app, and the tests that drive them. The domain is left out: it reads Django's models through `_meta`, which
+# Django does not type, so a checker would report the framework rather than the code.
+[tool.pyright]
+include = ["packages/djangoer/src/djangoer", "packages/djangoer/tests", "lint"]
+exclude = [
+  "**/__pycache__",
+  "**/static",
+  "packages/djangoer/src/djangoer/studio/domain",
+  # A Django project for the tests to run on: its models are Django's, which Django does not type.
+  "packages/djangoer/tests/project",
+]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.10"
+typeCheckingMode = "standard"

@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "djangoer"
+version = "0.1.0"
+description = "A Studio for your Django models and their data: browse rows, run SQL, try ORM queries and see the SQL they send"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "nakita628" }]
+keywords = ["django", "orm", "studio", "sql", "er-diagram", "database"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Web Environment",
+  "Framework :: Django",
+  "Framework :: Django :: 4.2",
+  "Framework :: Django :: 5.0",
+  "Framework :: Django :: 5.1",
+  "Framework :: Django :: 5.2",
+  "Framework :: Django :: 6.0",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Database",
+  "Topic :: Software Development",
+]
+dependencies = [
+  "django>=4.2",
+  "fastapi>=0.115",
+  "pydantic>=2.7",
+  "returns>=0.24",
+  "typing-extensions>=4.5",
+  "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+# `djangoer er -o er.png`: the SVG is drawn without it, the PNG is not.
+png = ["resvg-py>=0.2"]
+# Completion, hover and syntax errors while models.py is edited in Studio.
+inference = ["jedi>=0.19"]
+
+[project.urls]
+Repository = "https://github.com/nakita628/djangoer"
+Issues = "https://github.com/nakita628/djangoer/issues"
+Funding = "https://github.com/sponsors/nakita628"
+
+[project.scripts]
+djangoer = "djangoer.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/djangoer"]
+# The built Studio client is not tracked by git, so it is named here to be shipped.
+artifacts = ["src/djangoer/studio/static/**"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/djangoer", "README.md", "LICENSE"]
+artifacts = ["src/djangoer/studio/static/**"]

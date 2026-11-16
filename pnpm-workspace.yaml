@@ -1,0 +1,12 @@
+packages:
+  - packages/studio
+allowBuilds:
+  esbuild: true
+overrides:
+  # The same types without Adobe's Spectrum design system behind them (see hekireki).
+  '@react-types/color': 3.1.4
+  '@react-types/slider': 3.8.4
+  # What Vite+ asks of a project: every package that names `vite` gets the Vite+ core it builds
+  # with, and one Vitest, the one `vp test` runs. Keep both in step with vite-plus.
+  vite: npm:@voidzero-dev/vite-plus-core@1.4.0
+  vitest: 5.0.5

@@ -1,0 +1,4199 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Djangoer Studio",
+    "description": "The API behind Djangoer Studio: the schema, the database, the Django ORM playground and the docs.",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "paths": {
+    "/schema": {
+      "get": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Read Schema",
+        "operationId": "readSchema",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schema/reload": {
+      "post": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Reload Schema",
+        "operationId": "reloadSchema",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schema/files": {
+      "put": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Write Schema File",
+        "operationId": "writeSchemaFile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaFile"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The model is not in the schema.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schema/complete": {
+      "post": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Complete Source",
+        "operationId": "completeSchemaSource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcePositionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientCompletions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schema/hover": {
+      "post": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Hover Source",
+        "operationId": "hoverSchemaSource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcePositionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientHover"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schema/check": {
+      "post": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Check Source",
+        "operationId": "checkSchemaSource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientTypeDiagnostics"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schema/preview": {
+      "post": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Preview Schema",
+        "operationId": "previewSchema",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/db": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Read Status",
+        "operationId": "readDbStatus",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DbStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/db/counts": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Read Counts",
+        "operationId": "readCounts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Counts"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database cannot be reached.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/db/rows/{modelName}": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Read Rows",
+        "operationId": "readRows",
+        "parameters": [
+          {
+            "name": "modelName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Modelname"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "take",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Take"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rows"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The model is not in the schema.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database cannot be reached.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableProblem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Create Row",
+        "operationId": "createRow",
+        "parameters": [
+          {
+            "name": "modelName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Modelname"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsertBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Affected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The model is not in the schema.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database cannot be reached.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableProblem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Update Row",
+        "operationId": "updateRow",
+        "parameters": [
+          {
+            "name": "modelName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Modelname"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Affected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The model is not in the schema.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database cannot be reached.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableProblem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Delete Row",
+        "operationId": "deleteRow",
+        "parameters": [
+          {
+            "name": "modelName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Modelname"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Affected"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The model is not in the schema.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database cannot be reached.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/db/sql": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Run Sql",
+        "operationId": "runSql",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SqlResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database cannot be reached.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/db/explain": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Explain Sql",
+        "operationId": "explainSql",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database cannot be reached.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/db/analyze": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "Analyze Sql",
+        "operationId": "analyzeSql",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Analysis"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client": {
+      "get": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Read Status",
+        "operationId": "readClientStatus",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client/analyze": {
+      "post": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Analyze Query",
+        "operationId": "analyzeClientQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientQueryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientAnalysis"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client/check": {
+      "post": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Check Query",
+        "operationId": "checkClientQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientQueryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientTypeDiagnostics"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client/complete": {
+      "post": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Complete Query",
+        "operationId": "completeClientQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientPositionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientCompletions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client/complete/detail": {
+      "post": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Detail Completion",
+        "operationId": "detailClientCompletion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientCompletionDetailBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientCompletionDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client/hover": {
+      "post": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Hover Query",
+        "operationId": "hoverClientQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientPositionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientHover"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client/signature": {
+      "post": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Signature Query",
+        "operationId": "signatureClientQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientPositionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientSignatureHelp"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client/format": {
+      "post": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Format Query",
+        "operationId": "formatClientQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientQueryBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientFormatted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client/preview": {
+      "post": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Preview Query",
+        "operationId": "previewClientQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientRunBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database cannot be reached.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client/run": {
+      "post": {
+        "tags": [
+          "client"
+        ],
+        "summary": "Run Query",
+        "operationId": "runClientQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientRunBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The database cannot be reached.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "tags": [
+          "docs"
+        ],
+        "summary": "Read Docs",
+        "operationId": "readDocs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Docs"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Affected": {
+        "properties": {
+          "affected": {
+            "type": "integer",
+            "title": "Affected"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "affected"
+        ],
+        "title": "Affected"
+      },
+      "Analysis": {
+        "properties": {
+          "statements": {
+            "items": {
+              "$ref": "#/components/schemas/StatementAnalysis"
+            },
+            "type": "array",
+            "title": "Statements"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "statements"
+        ],
+        "title": "Analysis"
+      },
+      "AnalyzeBody": {
+        "properties": {
+          "sql": {
+            "type": "string",
+            "title": "Sql"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sql"
+        ],
+        "title": "AnalyzeBody"
+      },
+      "ClientAnalysis": {
+        "properties": {
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/ClientCall"
+            },
+            "type": "array",
+            "title": "Calls"
+          },
+          "transaction": {
+            "type": "boolean",
+            "title": "Transaction"
+          },
+          "touched": {
+            "items": {
+              "$ref": "#/components/schemas/ClientTouchedModel"
+            },
+            "type": "array",
+            "title": "Touched"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/ClientDiagnostic"
+            },
+            "type": "array",
+            "title": "Diagnostics"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "calls",
+          "transaction",
+          "touched",
+          "diagnostics"
+        ],
+        "title": "ClientAnalysis"
+      },
+      "ClientCall": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "write": {
+            "type": "boolean",
+            "title": "Write"
+          },
+          "range": {
+            "$ref": "#/components/schemas/TextRange"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model",
+          "operation",
+          "write",
+          "range"
+        ],
+        "title": "ClientCall"
+      },
+      "ClientCompletionDetail": {
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "documentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "detail",
+          "documentation"
+        ],
+        "title": "ClientCompletionDetail"
+      },
+      "ClientCompletionDetailBody": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query",
+          "offset",
+          "name"
+        ],
+        "title": "ClientCompletionDetailBody"
+      },
+      "ClientCompletionItem": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "sortText": {
+            "type": "string",
+            "title": "Sorttext"
+          },
+          "insertText": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inserttext"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "kind",
+          "sortText",
+          "insertText"
+        ],
+        "title": "ClientCompletionItem"
+      },
+      "ClientCompletions": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClientCompletionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ClientCompletions"
+      },
+      "ClientDiagnostic": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "range": {
+            "$ref": "#/components/schemas/TextRange"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message",
+          "range"
+        ],
+        "title": "ClientDiagnostic"
+      },
+      "ClientFormatted": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "ClientFormatted"
+      },
+      "ClientHover": {
+        "properties": {
+          "contents": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contents"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TextRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "contents",
+          "range"
+        ],
+        "title": "ClientHover"
+      },
+      "ClientPositionBody": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query",
+          "offset"
+        ],
+        "title": "ClientPositionBody"
+      },
+      "ClientPreview": {
+        "properties": {
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/ClientSqlQuery"
+            },
+            "type": "array",
+            "title": "Queries"
+          },
+          "durationMs": {
+            "type": "number",
+            "title": "Durationms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "queries",
+          "durationMs"
+        ],
+        "title": "ClientPreview"
+      },
+      "ClientQueryBody": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "ClientQueryBody"
+      },
+      "ClientResult": {
+        "properties": {
+          "result": {
+            "title": "Result"
+          },
+          "rowCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rowcount"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/ClientSqlQuery"
+            },
+            "type": "array",
+            "title": "Queries"
+          },
+          "durationMs": {
+            "type": "number",
+            "title": "Durationms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "result",
+          "rowCount",
+          "truncated",
+          "queries",
+          "durationMs"
+        ],
+        "title": "ClientResult"
+      },
+      "ClientRunBody": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Query"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "ClientRunBody"
+      },
+      "ClientSignature": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "documentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/ClientSignatureParameter"
+            },
+            "type": "array",
+            "title": "Parameters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "documentation",
+          "parameters"
+        ],
+        "title": "ClientSignature"
+      },
+      "ClientSignatureHelp": {
+        "properties": {
+          "signatures": {
+            "items": {
+              "$ref": "#/components/schemas/ClientSignature"
+            },
+            "type": "array",
+            "title": "Signatures"
+          },
+          "activeSignature": {
+            "type": "integer",
+            "title": "Activesignature"
+          },
+          "activeParameter": {
+            "type": "integer",
+            "title": "Activeparameter"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "signatures",
+          "activeSignature",
+          "activeParameter"
+        ],
+        "title": "ClientSignatureHelp"
+      },
+      "ClientSignatureParameter": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "documentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "documentation"
+        ],
+        "title": "ClientSignatureParameter"
+      },
+      "ClientSqlQuery": {
+        "properties": {
+          "sql": {
+            "type": "string",
+            "title": "Sql"
+          },
+          "formatted": {
+            "type": "string",
+            "title": "Formatted"
+          },
+          "params": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Params"
+          },
+          "durationMs": {
+            "type": "number",
+            "title": "Durationms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sql",
+          "formatted",
+          "params",
+          "durationMs"
+        ],
+        "title": "ClientSqlQuery"
+      },
+      "ClientStatus": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "typescript": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Typescript"
+          },
+          "typesError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Typeserror"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available",
+          "source",
+          "error",
+          "typescript",
+          "typesError"
+        ],
+        "title": "ClientStatus"
+      },
+      "ClientTouchedModel": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model",
+          "fields"
+        ],
+        "title": "ClientTouchedModel"
+      },
+      "ClientTypeDiagnostic": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ],
+            "title": "Severity"
+          },
+          "range": {
+            "$ref": "#/components/schemas/TextRange"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message",
+          "severity",
+          "range"
+        ],
+        "title": "ClientTypeDiagnostic"
+      },
+      "ClientTypeDiagnostics": {
+        "properties": {
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/ClientTypeDiagnostic"
+            },
+            "type": "array",
+            "title": "Diagnostics"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "diagnostics"
+        ],
+        "title": "ClientTypeDiagnostics"
+      },
+      "ColumnSource": {
+        "properties": {
+          "table": {
+            "type": "string",
+            "title": "Table"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "table",
+          "column"
+        ],
+        "title": "ColumnSource"
+      },
+      "Counts": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "counts"
+        ],
+        "title": "Counts"
+      },
+      "DbStatus": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "dialect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "postgresql",
+                  "mysql",
+                  "sqlite"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dialect"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "settings"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "connected",
+          "dialect",
+          "url",
+          "source",
+          "error"
+        ],
+        "title": "DbStatus"
+      },
+      "DeleteBody": {
+        "properties": {
+          "where": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Where"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "where"
+        ],
+        "title": "DeleteBody"
+      },
+      "Docs": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/DocsModel"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "inputTypes": {
+            "items": {
+              "$ref": "#/components/schemas/DocsObjectType"
+            },
+            "type": "array",
+            "title": "Inputtypes"
+          },
+          "outputTypes": {
+            "items": {
+              "$ref": "#/components/schemas/DocsObjectType"
+            },
+            "type": "array",
+            "title": "Outputtypes"
+          },
+          "enumTypes": {
+            "items": {
+              "$ref": "#/components/schemas/DocsEnum"
+            },
+            "type": "array",
+            "title": "Enumtypes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "models",
+          "inputTypes",
+          "outputTypes",
+          "enumTypes"
+        ],
+        "title": "Docs"
+      },
+      "DocsDirective": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "values"
+        ],
+        "title": "DocsDirective"
+      },
+      "DocsEnum": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "values"
+        ],
+        "title": "DocsEnum"
+      },
+      "DocsField": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "bareTypeName": {
+            "type": "string",
+            "title": "Baretypename"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "scalar",
+              "object",
+              "enum",
+              "unsupported"
+            ],
+            "title": "Kind"
+          },
+          "directives": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Directives"
+          },
+          "documentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "bareTypeName",
+          "kind",
+          "directives",
+          "documentation",
+          "required"
+        ],
+        "title": "DocsField"
+      },
+      "DocsModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "documentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation"
+          },
+          "directives": {
+            "items": {
+              "$ref": "#/components/schemas/DocsDirective"
+            },
+            "type": "array",
+            "title": "Directives"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/DocsField"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/DocsOperation"
+            },
+            "type": "array",
+            "title": "Operations"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "documentation",
+          "directives",
+          "fields",
+          "operations"
+        ],
+        "title": "DocsModel"
+      },
+      "DocsObjectType": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/DocsTypeField"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "fields"
+        ],
+        "title": "DocsObjectType"
+      },
+      "DocsOperation": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "usage": {
+            "type": "string",
+            "title": "Usage"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DocsOperationInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs"
+          },
+          "output": {
+            "$ref": "#/components/schemas/DocsOperationOutput"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "usage",
+          "inputs",
+          "output"
+        ],
+        "title": "DocsOperation"
+      },
+      "DocsOperationInput": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/DocsTypeRef"
+            },
+            "type": "array",
+            "title": "Types"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "types",
+          "required"
+        ],
+        "title": "DocsOperationInput"
+      },
+      "DocsOperationOutput": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "list": {
+            "type": "boolean",
+            "title": "List"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "required",
+          "list"
+        ],
+        "title": "DocsOperationOutput"
+      },
+      "DocsTypeField": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/DocsTypeRef"
+            },
+            "type": "array",
+            "title": "Types"
+          },
+          "nullable": {
+            "type": "boolean",
+            "title": "Nullable"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "types",
+          "nullable"
+        ],
+        "title": "DocsTypeField"
+      },
+      "DocsTypeRef": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "isList": {
+            "type": "boolean",
+            "title": "Islist"
+          },
+          "location": {
+            "type": "string",
+            "enum": [
+              "scalar",
+              "inputObjectTypes",
+              "outputObjectTypes",
+              "enumTypes",
+              "fieldRefTypes"
+            ],
+            "title": "Location"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "isList",
+          "location"
+        ],
+        "title": "DocsTypeRef"
+      },
+      "Enum": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "dbName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dbname"
+          },
+          "documentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/EnumValue"
+            },
+            "type": "array",
+            "title": "Values"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "dbName",
+          "documentation",
+          "values",
+          "location"
+        ],
+        "title": "Enum"
+      },
+      "EnumValue": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "dbName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dbname"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "dbName"
+        ],
+        "title": "EnumValue"
+      },
+      "Field": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "dbName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dbname"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "scalar",
+              "object",
+              "enum",
+              "unsupported"
+            ],
+            "title": "Kind"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "isList": {
+            "type": "boolean",
+            "title": "Islist"
+          },
+          "isRequired": {
+            "type": "boolean",
+            "title": "Isrequired"
+          },
+          "isId": {
+            "type": "boolean",
+            "title": "Isid"
+          },
+          "isUnique": {
+            "type": "boolean",
+            "title": "Isunique"
+          },
+          "isUpdatedAt": {
+            "type": "boolean",
+            "title": "Isupdatedat"
+          },
+          "isForeignKey": {
+            "type": "boolean",
+            "title": "Isforeignkey"
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "nativeType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nativetype"
+          },
+          "documentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation"
+          },
+          "annotations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Annotations"
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldRelation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attributes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Attributes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "dbName",
+          "kind",
+          "type",
+          "isList",
+          "isRequired",
+          "isId",
+          "isUnique",
+          "isUpdatedAt",
+          "isForeignKey",
+          "default",
+          "nativeType",
+          "documentation",
+          "annotations",
+          "relation",
+          "attributes"
+        ],
+        "title": "Field"
+      },
+      "FieldRelation": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "fromFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fromfields"
+          },
+          "toFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tofields"
+          },
+          "onDelete": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ondelete"
+          },
+          "onUpdate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Onupdate"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "fromFields",
+          "toFields",
+          "onDelete",
+          "onUpdate"
+        ],
+        "title": "FieldRelation",
+        "description": "The relation an object field follows: `author` reads `author_id` → `Author.id`."
+      },
+      "FileDiagnostic": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "range": {
+            "$ref": "#/components/schemas/LspRange"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "information",
+              "hint"
+            ],
+            "title": "Severity"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "range",
+          "message",
+          "severity"
+        ],
+        "title": "FileDiagnostic"
+      },
+      "FileWrite": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "title": "FileWrite",
+        "description": "A model file as it was edited in Studio, to write back."
+      },
+      "GraphEdge": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "flow",
+              "lookup"
+            ],
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "target",
+          "label",
+          "kind"
+        ],
+        "title": "GraphEdge"
+      },
+      "GraphNode": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "table",
+              "cte",
+              "subquery",
+              "values",
+              "function",
+              "join",
+              "filter",
+              "aggregate",
+              "having",
+              "project",
+              "distinct",
+              "sort",
+              "limit",
+              "union",
+              "insert",
+              "update",
+              "delete",
+              "returning"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "details": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Details"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TextRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/NodeColumn"
+            },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "details",
+          "range",
+          "scope",
+          "columns"
+        ],
+        "title": "GraphNode"
+      },
+      "Index": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "id",
+              "unique",
+              "normal",
+              "fulltext"
+            ],
+            "title": "Type"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "dbName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dbname"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "attribute": {
+            "type": "string",
+            "title": "Attribute"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "dbName",
+          "fields",
+          "attribute"
+        ],
+        "title": "Index"
+      },
+      "InsertBody": {
+        "properties": {
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "values"
+        ],
+        "title": "InsertBody"
+      },
+      "Location": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "line": {
+            "type": "integer",
+            "title": "Line"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "file",
+          "line"
+        ],
+        "title": "Location"
+      },
+      "LspPosition": {
+        "properties": {
+          "line": {
+            "type": "integer",
+            "title": "Line"
+          },
+          "character": {
+            "type": "integer",
+            "title": "Character"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "line",
+          "character"
+        ],
+        "title": "LspPosition"
+      },
+      "LspRange": {
+        "properties": {
+          "start": {
+            "$ref": "#/components/schemas/LspPosition"
+          },
+          "end": {
+            "$ref": "#/components/schemas/LspPosition"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "LspRange"
+      },
+      "Model": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "app": {
+            "type": "string",
+            "title": "App"
+          },
+          "dbName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dbname"
+          },
+          "documentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation"
+          },
+          "annotations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Annotations"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/Field"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "primaryKey": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primarykey"
+          },
+          "indexes": {
+            "items": {
+              "$ref": "#/components/schemas/Index"
+            },
+            "type": "array",
+            "title": "Indexes"
+          },
+          "attributes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Attributes"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "app",
+          "dbName",
+          "documentation",
+          "annotations",
+          "fields",
+          "primaryKey",
+          "indexes",
+          "attributes",
+          "location"
+        ],
+        "title": "Model"
+      },
+      "NodeColumn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "dataType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datatype"
+          },
+          "used": {
+            "type": "boolean",
+            "title": "Used"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "dataType",
+          "used"
+        ],
+        "title": "NodeColumn"
+      },
+      "OutputColumn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "expression": {
+            "type": "string",
+            "title": "Expression"
+          },
+          "dataType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datatype"
+          },
+          "tsType": {
+            "type": "string",
+            "title": "Tstype"
+          },
+          "nullable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nullable"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnSource"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "expression",
+          "dataType",
+          "tsType",
+          "nullable",
+          "sources"
+        ],
+        "title": "OutputColumn"
+      },
+      "Plan": {
+        "properties": {
+          "dialect": {
+            "type": "string",
+            "enum": [
+              "postgresql",
+              "mysql",
+              "sqlite"
+            ],
+            "title": "Dialect"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/PlanNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "raw": {
+            "type": "string",
+            "title": "Raw"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dialect",
+          "nodes",
+          "raw"
+        ],
+        "title": "Plan"
+      },
+      "PlanNode": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "parent",
+          "label",
+          "detail",
+          "cost",
+          "rows"
+        ],
+        "title": "PlanNode"
+      },
+      "Relation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "inferred",
+              "annotated",
+              "implicit-many-to-many"
+            ],
+            "title": "Origin"
+          },
+          "from": {
+            "$ref": "#/components/schemas/RelationEnd"
+          },
+          "to": {
+            "$ref": "#/components/schemas/RelationEnd"
+          },
+          "onDelete": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ondelete"
+          },
+          "onUpdate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Onupdate"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "origin",
+          "from",
+          "to",
+          "onDelete",
+          "onUpdate"
+        ],
+        "title": "Relation"
+      },
+      "RelationEnd": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "cardinality": {
+            "type": "string",
+            "enum": [
+              "zero-one",
+              "one",
+              "zero-many",
+              "many"
+            ],
+            "title": "Cardinality"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model",
+          "field",
+          "cardinality"
+        ],
+        "title": "RelationEnd"
+      },
+      "Rows": {
+        "properties": {
+          "rows": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "skip": {
+            "type": "integer",
+            "title": "Skip"
+          },
+          "take": {
+            "type": "integer",
+            "title": "Take"
+          },
+          "key": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Key"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "rows",
+          "total",
+          "skip",
+          "take",
+          "key",
+          "columns"
+        ],
+        "title": "Rows"
+      },
+      "Schema": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaFile"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/Model"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "enums": {
+            "items": {
+              "$ref": "#/components/schemas/Enum"
+            },
+            "type": "array",
+            "title": "Enums"
+          },
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/Relation"
+            },
+            "type": "array",
+            "title": "Relations"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "files",
+          "provider",
+          "models",
+          "enums",
+          "relations"
+        ],
+        "title": "Schema"
+      },
+      "SchemaFile": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "title": "SchemaFile",
+        "description": "A module that declares models, as Studio names and shows it."
+      },
+      "Snapshot": {
+        "properties": {
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Schema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/FileDiagnostic"
+            },
+            "type": "array",
+            "title": "Diagnostics"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Updatedat"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaFile"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema",
+          "error",
+          "diagnostics",
+          "updatedAt",
+          "files"
+        ],
+        "title": "Snapshot",
+        "description": "The schema as it was last read, or the reason there is none."
+      },
+      "SourceBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "title": "SourceBody",
+        "description": "A model file as it is being edited."
+      },
+      "SourcePositionBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "content",
+          "offset"
+        ],
+        "title": "SourcePositionBody",
+        "description": "A place in a model file being edited."
+      },
+      "SqlBody": {
+        "properties": {
+          "sql": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Sql"
+          },
+          "params": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Params"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sql"
+        ],
+        "title": "SqlBody"
+      },
+      "SqlDiagnostic": {
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "info"
+            ],
+            "title": "Severity"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TextRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "severity",
+          "message",
+          "range"
+        ],
+        "title": "SqlDiagnostic"
+      },
+      "SqlParameter": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Index"
+          },
+          "placeholder": {
+            "type": "string",
+            "title": "Placeholder"
+          },
+          "dataType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datatype"
+          },
+          "tsType": {
+            "type": "string",
+            "title": "Tstype"
+          },
+          "nullable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nullable"
+          },
+          "context": {
+            "type": "string",
+            "title": "Context"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "index",
+          "placeholder",
+          "dataType",
+          "tsType",
+          "nullable",
+          "context"
+        ],
+        "title": "SqlParameter"
+      },
+      "SqlResult": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "rowCount": {
+            "type": "integer",
+            "title": "Rowcount"
+          },
+          "durationMs": {
+            "type": "number",
+            "title": "Durationms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "columns",
+          "rows",
+          "rowCount",
+          "durationMs"
+        ],
+        "title": "SqlResult"
+      },
+      "StatementAnalysis": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "select",
+              "insert",
+              "update",
+              "delete",
+              "other",
+              "invalid"
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "range": {
+            "$ref": "#/components/schemas/TextRange"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "type": "array",
+            "title": "Edges"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableRef"
+            },
+            "type": "array",
+            "title": "Tables"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/OutputColumn"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/SqlParameter"
+            },
+            "type": "array",
+            "title": "Parameters"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/SqlDiagnostic"
+            },
+            "type": "array",
+            "title": "Diagnostics"
+          },
+          "rowType": {
+            "type": "string",
+            "title": "Rowtype"
+          },
+          "paramsType": {
+            "type": "string",
+            "title": "Paramstype"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "text",
+          "range",
+          "nodes",
+          "edges",
+          "tables",
+          "columns",
+          "parameters",
+          "diagnostics",
+          "rowType",
+          "paramsType"
+        ],
+        "title": "StatementAnalysis"
+      },
+      "TableRef": {
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "title": "Nodeid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "alias": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alias"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "known": {
+            "type": "boolean",
+            "title": "Known"
+          },
+          "columnsUsed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columnsused"
+          },
+          "range": {
+            "$ref": "#/components/schemas/TextRange"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nodeId",
+          "name",
+          "alias",
+          "scope",
+          "known",
+          "columnsUsed",
+          "range"
+        ],
+        "title": "TableRef"
+      },
+      "TextRange": {
+        "properties": {
+          "start": {
+            "type": "integer",
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "title": "End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "TextRange",
+        "description": "Character offsets into the text that was sent, end-exclusive."
+      },
+      "UpdateBody": {
+        "properties": {
+          "where": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Where"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "where",
+          "values"
+        ],
+        "title": "UpdateBody"
+      },
+      "NotFoundProblem": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "instance": {
+            "title": "Instance",
+            "type": "string"
+          },
+          "type": {
+            "const": "/problems/not-found",
+            "default": "/problems/not-found",
+            "title": "Type",
+            "type": "string"
+          },
+          "title": {
+            "const": "Not Found",
+            "default": "Not Found",
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "const": 404,
+            "default": 404,
+            "title": "Status",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "detail",
+          "instance"
+        ],
+        "title": "NotFoundProblem",
+        "type": "object"
+      },
+      "FieldError": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "FieldError",
+        "type": "object"
+      },
+      "ValidationProblem": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "instance": {
+            "title": "Instance",
+            "type": "string"
+          },
+          "type": {
+            "const": "/problems/validation-failed",
+            "default": "/problems/validation-failed",
+            "title": "Type",
+            "type": "string"
+          },
+          "title": {
+            "const": "Validation Failed",
+            "default": "Validation Failed",
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "const": 422,
+            "default": 422,
+            "title": "Status",
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "title": "Errors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail",
+          "instance",
+          "errors"
+        ],
+        "title": "ValidationProblem",
+        "type": "object"
+      },
+      "ServiceUnavailableProblem": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "instance": {
+            "title": "Instance",
+            "type": "string"
+          },
+          "type": {
+            "const": "/problems/service-unavailable",
+            "default": "/problems/service-unavailable",
+            "title": "Type",
+            "type": "string"
+          },
+          "title": {
+            "const": "Service Unavailable",
+            "default": "Service Unavailable",
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "const": 503,
+            "default": 503,
+            "title": "Status",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "detail",
+          "instance"
+        ],
+        "title": "ServiceUnavailableProblem",
+        "type": "object"
+      },
+      "InternalServerProblem": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "instance": {
+            "title": "Instance",
+            "type": "string"
+          },
+          "type": {
+            "const": "/problems/internal-server-error",
+            "default": "/problems/internal-server-error",
+            "title": "Type",
+            "type": "string"
+          },
+          "title": {
+            "const": "Internal Server Error",
+            "default": "Internal Server Error",
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "const": 500,
+            "default": 500,
+            "title": "Status",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "detail",
+          "instance"
+        ],
+        "title": "InternalServerProblem",
+        "type": "object"
+      }
+    }
+  }
+}
