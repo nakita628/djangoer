@@ -93,6 +93,23 @@ type Snapshot = {
   updatedAt: string | string
   files: SchemaFile[]
 }
+type FileWrite = { path: string; content: string }
+type NotFoundProblem = {
+  detail: string
+  instance: string
+  type?: '/problems/not-found' | undefined
+  title?: 'Not Found' | undefined
+  status?: 404 | undefined
+}
+type FieldError = { field: string; message: string }
+type ValidationProblem = {
+  detail: string
+  instance: string
+  type?: '/problems/validation-failed' | undefined
+  title?: 'Validation Failed' | undefined
+  status?: 422 | undefined
+  errors: FieldError[]
+}
 type DbStatus = {
   connected: boolean
   dialect: 'postgresql' | 'mysql' | 'sqlite' | null
@@ -115,22 +132,6 @@ type Rows = {
   take: number
   key: string[]
   columns: string[]
-}
-type NotFoundProblem = {
-  detail: string
-  instance: string
-  type?: '/problems/not-found' | undefined
-  title?: 'Not Found' | undefined
-  status?: 404 | undefined
-}
-type FieldError = { field: string; message: string }
-type ValidationProblem = {
-  detail: string
-  instance: string
-  type?: '/problems/validation-failed' | undefined
-  title?: 'Validation Failed' | undefined
-  status?: 422 | undefined
-  errors: FieldError[]
 }
 type InsertBody = { values: { [x: string]: string | number | number | boolean | null } }
 type Affected = { affected: number }
@@ -346,6 +347,23 @@ declare const routes: import('@hono/zod-openapi').OpenAPIHono<
     } & {
       '/api/schema/reload': {
         $post: { input: {}; output: Snapshot; outputFormat: 'json'; status: 200 }
+      }
+    } & {
+      '/api/schema/files': {
+        $put:
+          | { input: { json: FileWrite }; output: SchemaFile; outputFormat: 'json'; status: 200 }
+          | {
+              input: { json: FileWrite }
+              output: NotFoundProblem
+              outputFormat: 'json'
+              status: 404
+            }
+          | {
+              input: { json: FileWrite }
+              output: ValidationProblem
+              outputFormat: 'json'
+              status: 422
+            }
       }
     } & {
       '/api/db': { $get: { input: {}; output: DbStatus; outputFormat: 'json'; status: 200 } }

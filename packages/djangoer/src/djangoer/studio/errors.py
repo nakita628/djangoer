@@ -85,3 +85,24 @@ class ExportError(StudioError):
 
     def __str__(self) -> str:
         return self.message
+
+
+@dataclass(frozen=True)
+class UnknownFileError(StudioError):
+    """A path that is not one of the project's own model files; raised before anything is written."""
+
+    path: str
+
+    def __str__(self) -> str:
+        return f'"{self.path}" is not one of the project\'s model files.'
+
+
+@dataclass(frozen=True)
+class FileWriteError(StudioError):
+    """A model file the system refused to write: no permission, a disk that is full."""
+
+    path: str
+    cause: str
+
+    def __str__(self) -> str:
+        return f"{self.path} could not be written: {self.cause}"

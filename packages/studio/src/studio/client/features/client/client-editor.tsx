@@ -90,6 +90,14 @@ export function ClientEditor({
         void mounted.getAction('editor.action.formatDocument')?.run()
       },
     )
+    // The model outlives the page (`keepCurrentModel`), so it may hold the text of an earlier
+    // visit. A query handed to the page replaces it; with none, the kept text is the query, and
+    // the page is told so.
+    const kept = mounted.getValue()
+    if (kept !== value) {
+      if (value === '') latest.current.onChange(kept)
+      else mounted.setValue(value)
+    }
     onReady(mounted)
     const model = mounted.getModel()
     if (model) applyClientMarkers(model, markers)

@@ -92,3 +92,14 @@ class ExportFile(OnDatabase):
     name: str
     # The project's directory, which tells its own models from the ones of installed packages.
     root: Path
+
+
+class WriteFile(Input):
+    """A model file to write back, as it was edited in Studio."""
+
+    path: str
+    content: str
+    # The project's directory, and the paths under it that may be written: the model files
+    # Studio lists, and no other.
+    root: Path
+    files: tuple[str, ...]

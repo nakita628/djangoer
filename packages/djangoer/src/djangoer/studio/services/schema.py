@@ -7,7 +7,11 @@ import time
 
 from returns.result import Success
 
+from .. import contract, inputs
+from ..domain import files
+from ..errors import FileWriteError, UnknownFileError
 from ..state import State
+from .effect import effect
 
 
 def read(input: State):
@@ -16,6 +20,12 @@ def read(input: State):
 
 def reload(input: State):
     return Success(input.reload())
+
+
+def write(input: inputs.WriteFile):
+    return effect(
+        contract.SchemaFile, (UnknownFileError, FileWriteError), lambda: files.write(input)
+    )
 
 
 EVENT_PING_SECONDS = 15

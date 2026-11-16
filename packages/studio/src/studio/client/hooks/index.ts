@@ -159,6 +159,55 @@ export function usePostSchemaReload<TError = DefaultError, TOnMutateResult = unk
   )
 }
 
+export function getPutSchemaFilesMutationKey() {
+  return ['schema', '/schema/files', 'PUT'] as const
+}
+
+export function getPutSchemaFilesMutationOptions<TError = DefaultError, TOnMutateResult = unknown>(
+  options?: ClientRequestOptions,
+) {
+  return mutationOptions<
+    Awaited<ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.files.$put>>>>>,
+    TError,
+    InferRequestType<typeof client.schema.files.$put>,
+    TOnMutateResult
+  >({
+    mutationKey: getPutSchemaFilesMutationKey(),
+    async mutationFn(args: InferRequestType<typeof client.schema.files.$put>) {
+      return parseResponse(client.schema.files.$put(args, options))
+    },
+  })
+}
+
+export function usePutSchemaFiles<TError = DefaultError, TOnMutateResult = unknown>(
+  options?: {
+    mutation?: Omit<
+      UseMutationOptions<
+        Awaited<
+          ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.files.$put>>>>
+        >,
+        TError,
+        InferRequestType<typeof client.schema.files.$put>,
+        TOnMutateResult
+      >,
+      'mutationFn'
+    >
+    options?: ClientRequestOptions
+  },
+  queryClient?: QueryClient,
+) {
+  const { mutation: mutationOptions, options: clientOptions } = options ?? {}
+  const mutationDefaults = getPutSchemaFilesMutationOptions<TError, TOnMutateResult>(clientOptions)
+  return useMutation(
+    {
+      ...mutationOptions,
+      ...mutationDefaults,
+      mutationKey: mutationOptions?.mutationKey ?? mutationDefaults.mutationKey,
+    },
+    queryClient,
+  )
+}
+
 export function getDbQueryKey() {
   return ['db', '/db'] as const
 }

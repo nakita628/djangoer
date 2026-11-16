@@ -23,6 +23,13 @@ class SchemaFile(Contract):
     content: str
 
 
+class FileWrite(Contract):
+    """A model file as it was edited in Studio, to write back."""
+
+    path: str
+    content: str
+
+
 class Location(Contract):
     file: str
     line: int

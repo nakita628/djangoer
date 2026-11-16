@@ -21,8 +21,10 @@ from ..errors import (
     DatabaseRejectedError,
     DatabaseUnavailableError,
     ExportError,
+    FileWriteError,
     InvalidInputError,
     QueryError,
+    UnknownFileError,
     UnknownModelError,
 )
 
@@ -70,6 +72,14 @@ def refused(request: Request, error: QueryError) -> JSONResponse:
 
 def unavailable(request: Request, error: DatabaseUnavailableError) -> JSONResponse:
     return answer(contract.ServiceUnavailableProblem(detail=str(error), instance=request.url.path))
+
+
+def unknown_file(request: Request, error: UnknownFileError) -> JSONResponse:
+    return answer(contract.NotFoundProblem(detail=str(error), instance=request.url.path))
+
+
+def not_written(request: Request, error: FileWriteError) -> JSONResponse:
+    return answer(_invalid(request.url.path, [("path", error.cause)], detail=str(error)))
 
 
 def no_export(request: Request, error: ExportError) -> JSONResponse:

@@ -53,6 +53,57 @@
         }
       }
     },
+    "/schema/files": {
+      "put": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Write Schema File",
+        "operationId": "writeSchemaFile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaFile"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The model is not in the schema.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/db": {
       "get": {
         "tags": [
@@ -2484,6 +2535,26 @@
           "severity"
         ],
         "title": "FileDiagnostic"
+      },
+      "FileWrite": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "title": "FileWrite",
+        "description": "A model file as it was edited in Studio, to write back."
       },
       "GraphEdge": {
         "properties": {

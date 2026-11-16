@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from returns.result import Failure, Success
 from typing_extensions import assert_never
 
-from .. import contract
+from .. import contract, inputs
+from ..errors import FileWriteError, UnknownFileError
 from ..usecases import SchemaUseCase
-from .common import StudioState, server_sent_events
+from . import problems
+from .common import INVALID, NOT_FOUND, StudioState, server_sent_events
 
 router = APIRouter(prefix="/schema", tags=["schema"])
 
@@ -29,6 +31,33 @@ def reload_schema(state: StudioState):
             return value
         case Failure(error):
             assert_never(error)
+
+
+@router.put(
+    "/files",
+    operation_id="writeSchemaFile",
+    response_model=contract.SchemaFile,
+    responses={**NOT_FOUND, **INVALID},
+)
+def write_schema_file(request: Request, state: StudioState, body: contract.FileWrite):
+    match SchemaUseCase.write_schema_file(
+        inputs.WriteFile(
+            path=body.path,
+            content=body.content,
+            root=state.root,
+            files=tuple(file.path for file in state.snapshot.files),
+        )
+    ):
+        case Success(value):
+            return value
+        case Failure(error):
+            match error:
+                case UnknownFileError():
+                    return problems.unknown_file(request, error)
+                case FileWriteError():
+                    return problems.not_written(request, error)
+                case _:
+                    assert_never(error)
 
 
 # Not in the OpenAPI document: a stream is read with EventSource, not with a generated hook.
