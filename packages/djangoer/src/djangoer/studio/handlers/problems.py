@@ -23,6 +23,7 @@ from ..errors import (
     ExportError,
     FileWriteError,
     InvalidInputError,
+    PreviewError,
     QueryError,
     UnknownFileError,
     UnknownModelError,
@@ -80,6 +81,10 @@ def unknown_file(request: Request, error: UnknownFileError) -> JSONResponse:
 
 def not_written(request: Request, error: FileWriteError) -> JSONResponse:
     return answer(_invalid(request.url.path, [("path", error.cause)], detail=str(error)))
+
+
+def not_loading(request: Request, error: PreviewError) -> JSONResponse:
+    return answer(_invalid(request.url.path, [("content", error.message)], detail=error.message))
 
 
 def no_export(request: Request, error: ExportError) -> JSONResponse:

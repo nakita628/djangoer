@@ -227,6 +227,47 @@
         }
       }
     },
+    "/schema/preview": {
+      "post": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Preview Schema",
+        "operationId": "previewSchema",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schema"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/db": {
       "get": {
         "tags": [

@@ -42,3 +42,8 @@ def hover_source(input: inputs.SourceAt):
 def check_source(input: inputs.SourceText):
     """Where a model file's syntax breaks, as it is typed."""
     return SchemaService.check(input)
+
+
+def preview_schema(input: inputs.PreviewSource):
+    """The schema a model file would give if it were saved as it is being edited."""
+    return SchemaService.preview(input)

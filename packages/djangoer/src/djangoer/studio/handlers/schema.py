@@ -7,7 +7,7 @@ from returns.result import Failure, Success
 from typing_extensions import assert_never
 
 from .. import contract, inputs
-from ..errors import FileWriteError, UnknownFileError
+from ..errors import FileWriteError, PreviewError, UnknownFileError
 from ..usecases import SchemaUseCase
 from . import problems
 from .common import INVALID, NOT_FOUND, StudioState, server_sent_events
@@ -106,6 +106,28 @@ def check_source(state: StudioState, body: contract.SourceBody):
             return value
         case Failure(error):
             assert_never(error)
+
+
+@router.post(
+    "/preview",
+    operation_id="previewSchema",
+    response_model=contract.Schema,
+    responses=INVALID,
+)
+def preview_schema(request: Request, state: StudioState, body: contract.SourceBody):
+    match SchemaUseCase.preview_schema(
+        inputs.PreviewSource(
+            alias=state.alias, path=body.path, content=body.content, root=state.root
+        )
+    ):
+        case Success(value):
+            return value
+        case Failure(error):
+            match error:
+                case PreviewError():
+                    return problems.not_loading(request, error)
+                case _:
+                    assert_never(error)
 
 
 # Not in the OpenAPI document: a stream is read with EventSource, not with a generated hook.

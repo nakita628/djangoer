@@ -123,6 +123,9 @@ builtins-ignorelist = ["input"]
 # A management command is written as Django's base class has it.
 "packages/djangoer/src/djangoer/management/commands/*.py" = ["ARG002", "RUF012"]
 "packages/djangoer/src/djangoer/studio/openapi.py" = ["T201"]
+# A process of its own: it answers on stdout, imports Django once the edited file is in place,
+# and implements the import protocol's methods as Python calls them.
+"packages/djangoer/src/djangoer/studio/preview_worker.py" = ["T201", "PLC0415", "ARG002"]
 "lint/*.py" = ["T201"]
 
 [tool.ruff.lint.isort]

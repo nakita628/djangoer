@@ -86,6 +86,9 @@ test.describe('the file on disk', () => {
 })
 
 test.describe('inference', () => {
+  // Half-typed code (`models.Cha`) does not load: its diagram preview is refused, as it should be.
+  test.use({ expectedProblems: [/422/u] })
+
   test('completion knows Django and what a queryset returns', async ({ page }) => {
     await page.goto('/source')
     await typeAtEnd(page, '\n\nfield = models.Cha')
@@ -119,5 +122,46 @@ test.describe('inference', () => {
     const at = (text.indexOf('CharField') + 3) / text.length
     await page.mouse.move(box.x + box.width * at, box.y + box.height / 2)
     await expect(page.locator('.monaco-hover-content').first()).toContainText('CharField(')
+  })
+})
+
+test.describe('the diagram while models.py is edited', () => {
+  test('follows the unsaved text, and the file on disk stays as it was', async ({
+    page,
+    models,
+  }) => {
+    await page.goto('/source')
+    await expect(diagram(page).getByText('Tag', { exact: true }).first()).toBeVisible()
+    const label = page.locator('.monaco-editor .view-line', {
+      hasText: 'label = models.SlugField(unique=True)',
+    })
+    await label.click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(
+      '\nowner = models.ForeignKey("Author", on_delete=models.CASCADE, null=True)',
+      { delay: 10 },
+    )
+    await expect(page.getByRole('note', { name: 'Diagram preview' })).toHaveText(
+      'Preview of the unsaved changes',
+    )
+    await expect(diagram(page).getByText('owner_id').first()).toBeVisible()
+    expect(readModels()).toBe(models)
+  })
+
+  test.describe('a text that does not load yet', () => {
+    test.use({ expectedProblems: [/422/u] })
+
+    test('keeps the last diagram and says why', async ({ page }) => {
+      await page.goto('/source')
+      const tag = page.locator('.monaco-editor .view-line', { hasText: 'class Tag(models.Model):' })
+      await tag.click()
+      await page.keyboard.press('End')
+      // `class Tag(models.Model)` without its colon.
+      await page.keyboard.press('Backspace')
+      await expect(page.getByRole('note', { name: 'Diagram preview' })).toContainText(
+        "The edit does not load yet: SyntaxError: expected ':'",
+      )
+      await expect(diagram(page).getByText('Tag', { exact: true }).first()).toBeVisible()
+    })
   })
 })

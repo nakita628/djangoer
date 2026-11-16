@@ -106,3 +106,14 @@ class FileWriteError(StudioError):
 
     def __str__(self) -> str:
         return f"{self.path} could not be written: {self.cause}"
+
+
+@dataclass(frozen=True)
+class PreviewError(StudioError):
+    """A model file being edited that does not load as it stands: a syntax error, a field Django
+    refuses. Nothing is wrong on disk; the text is not finished."""
+
+    message: str
+
+    def __str__(self) -> str:
+        return self.message

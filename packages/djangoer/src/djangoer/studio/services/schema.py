@@ -9,7 +9,8 @@ from returns.result import Success
 
 from .. import contract, inputs
 from ..domain import files, source
-from ..errors import FileWriteError, UnknownFileError
+from ..domain import preview as previews
+from ..errors import FileWriteError, PreviewError, UnknownFileError
 from ..state import State
 from .effect import effect, reading
 
@@ -38,6 +39,10 @@ def hover(input: inputs.SourceAt):
 
 def check(input: inputs.SourceText):
     return reading(contract.ClientTypeDiagnostics, lambda: source.check(input))
+
+
+def preview(input: inputs.PreviewSource):
+    return effect(contract.Schema, (PreviewError,), lambda: previews.preview(input))
 
 
 EVENT_PING_SECONDS = 15

@@ -416,6 +416,17 @@ declare const routes: import('@hono/zod-openapi').OpenAPIHono<
             }
       }
     } & {
+      '/api/schema/preview': {
+        $post:
+          | { input: { json: SourceBody }; output: Schema; outputFormat: 'json'; status: 200 }
+          | {
+              input: { json: SourceBody }
+              output: ValidationProblem
+              outputFormat: 'json'
+              status: 422
+            }
+      }
+    } & {
       '/api/db': { $get: { input: {}; output: DbStatus; outputFormat: 'json'; status: 200 } }
     } & {
       '/api/db/counts': {

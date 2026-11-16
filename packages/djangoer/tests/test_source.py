@@ -70,3 +70,32 @@ def test_the_editor_asks_through_the_api(api):
     assert body["diagnostics"][0]["severity"] == "error"
     status, _body = api("POST", "/api/schema/hover", {"path": PATH, "content": text, "offset": -1})
     assert status == 422
+
+
+def test_preview_is_the_schema_of_the_text_being_edited(api):
+    edited = TEXT.replace(
+        "    note = models.TextField(blank=True)\n",
+        "    note = models.TextField(blank=True)\n    gift = models.BooleanField(default=False)\n",
+    )
+    status, schema = api("POST", "/api/schema/preview", {"path": PATH, "content": edited})
+    assert status == 200
+    order = next(model for model in schema["models"] if model["name"] == "Order")
+    assert "gift" in [field["name"] for field in order["fields"]]
+    # Located in the text being edited, not in the file on disk.
+    assert order["location"]["line"] == edited.splitlines().index("class Order(models.Model):") + 1
+    # The file and the project Studio serves are as they were.
+    assert (ROOT / PATH).read_text() == TEXT
+    _status, snapshot = api("GET", "/api/schema")
+    served = next(model for model in snapshot["schema"]["models"] if model["name"] == "Order")
+    assert "gift" not in [field["name"] for field in served["fields"]]
+
+
+def test_preview_of_a_text_that_does_not_load_says_why(api):
+    broken = TEXT.replace("class Order(models.Model):", "class Order(models.Model)")
+    status, body = api("POST", "/api/schema/preview", {"path": PATH, "content": broken})
+    assert status == 422
+    assert body["detail"].startswith("SyntaxError: expected ':'")
+    refused = TEXT.replace("max_length=100", "max_lenght=100", 1)
+    status, body = api("POST", "/api/schema/preview", {"path": PATH, "content": refused})
+    assert status == 422
+    assert "unexpected keyword argument 'max_lenght'" in body["detail"]

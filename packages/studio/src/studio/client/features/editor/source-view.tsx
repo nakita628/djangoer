@@ -27,6 +27,7 @@ type Snapshot = InferResponseType<typeof client.schema.$get, 200>
 const SPLIT_KEY = 'djangoer-studio:source-split'
 const CHECK_DEBOUNCE_MS = 300
 const MARKER_OWNER = 'djangoer'
+const PREVIEW_DEBOUNCE_MS = 400
 
 // The files are the project's own model files, edited here and written back as they are saved.
 // Python is indented by four spaces.
@@ -207,6 +208,34 @@ export function SourceView({
   const revealLine =
     file !== null && chosenPath === null && target?.file === file.path ? target.line : null
 
+  // The text the preview is drawn from: what the editor holds, once typing pauses.
+  const editing = file === null ? '' : (drafts[file.path]?.text ?? file.content)
+  const previewText = useDebounced(editing, PREVIEW_DEBOUNCE_MS)
+  // The diagram of the text as it is being edited, before it is saved: the server loads it in a
+  // process of its own. A text that does not load keeps the last diagram that did, and says why.
+  const previewPath = file?.path ?? null
+  // Only a draft is previewed, and only once typing has paused on it: a file that changed on disk
+  // is the diagram the server already serves.
+  const draftText = file === null ? undefined : drafts[file.path]?.text
+  const unsaved =
+    file !== null &&
+    draftText !== undefined &&
+    previewText === draftText &&
+    draftText !== saved[file.path]
+  const preview = useQuery({
+    queryKey: [...getSchemaKey(), '/schema/preview', previewPath, previewText] as const,
+    queryFn: ({ signal }) =>
+      parseResponse(
+        api.schema.preview.$post(
+          { json: { path: previewPath ?? '', content: previewText } },
+          { init: { signal } },
+        ),
+      ),
+    enabled: unsaved && previewPath !== null,
+    placeholderData: (previous) => previous,
+    retry: false,
+  })
+
   const highlight = useMemo(
     () => (file === null ? null : blockAtLine(blocks, file.path, cursorLine)),
     [blocks, file, cursorLine],
@@ -247,6 +276,9 @@ export function SourceView({
     setBeforeSave((current) => ({ ...current, [file.path]: file.content }))
     write.mutate({ json: { path: file.path, content: text } })
   }
+  const shown = dirty ? (preview.data ?? schema) : schema
+  const previewFailed = dirty && preview.isError && !preview.isFetching
+
   const status = write.isPending
     ? 'Saving…'
     : changedOnDisk
@@ -271,8 +303,19 @@ export function SourceView({
 
   const diagram = (
     <div className="flex min-h-0 min-w-0 flex-col">
-      {schema ? (
-        <SchemaCanvas schema={schema} focus={null} highlight={highlight} compact />
+      {dirty ? (
+        <div
+          role="note"
+          aria-label="Diagram preview"
+          className={`border-b border-line px-4 py-1.5 text-code ${previewFailed ? 'text-danger' : 'text-muted'}`}
+        >
+          {previewFailed
+            ? `The edit does not load yet: ${problemMessage(preview.error)}`
+            : 'Preview of the unsaved changes'}
+        </div>
+      ) : null}
+      {shown ? (
+        <SchemaCanvas schema={shown} focus={null} highlight={highlight} compact />
       ) : (
         <div className="p-6 text-muted">The diagram appears once the models load.</div>
       )}

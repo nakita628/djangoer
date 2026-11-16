@@ -364,6 +364,60 @@ export function usePostSchemaCheck<TError = DefaultError, TOnMutateResult = unkn
   )
 }
 
+export function getPostSchemaPreviewMutationKey() {
+  return ['schema', '/schema/preview', 'POST'] as const
+}
+
+export function getPostSchemaPreviewMutationOptions<
+  TError = DefaultError,
+  TOnMutateResult = unknown,
+>(options?: ClientRequestOptions) {
+  return mutationOptions<
+    Awaited<
+      ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.preview.$post>>>>
+    >,
+    TError,
+    InferRequestType<typeof client.schema.preview.$post>,
+    TOnMutateResult
+  >({
+    mutationKey: getPostSchemaPreviewMutationKey(),
+    async mutationFn(args: InferRequestType<typeof client.schema.preview.$post>) {
+      return parseResponse(client.schema.preview.$post(args, options))
+    },
+  })
+}
+
+export function usePostSchemaPreview<TError = DefaultError, TOnMutateResult = unknown>(
+  options?: {
+    mutation?: Omit<
+      UseMutationOptions<
+        Awaited<
+          ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.preview.$post>>>>
+        >,
+        TError,
+        InferRequestType<typeof client.schema.preview.$post>,
+        TOnMutateResult
+      >,
+      'mutationFn'
+    >
+    options?: ClientRequestOptions
+  },
+  queryClient?: QueryClient,
+) {
+  const { mutation: mutationOptions, options: clientOptions } = options ?? {}
+  const mutationDefaults = getPostSchemaPreviewMutationOptions<TError, TOnMutateResult>(
+    clientOptions,
+  )
+  return useMutation(
+    {
+      ...mutationOptions,
+      ...mutationDefaults,
+      mutationKey: mutationOptions?.mutationKey ?? mutationDefaults.mutationKey,
+    },
+    queryClient,
+  )
+}
+
 export function getDbQueryKey() {
   return ['db', '/db'] as const
 }

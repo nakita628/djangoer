@@ -117,3 +117,11 @@ class SourceAt(SourceText):
     """A place in a model file being edited."""
 
     offset: Annotated[Offset, Field(ge=0)]
+
+
+class PreviewSource(OnDatabase):
+    """A model file being edited, to draw the schema of before it is saved."""
+
+    path: str
+    content: str
+    root: Path
