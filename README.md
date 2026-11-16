@@ -28,7 +28,6 @@ djangoer er -o er.md -o schema.dbml -o er.svg
 djangoer docs -o docs/schema
 ```
 
-More in the package's README: [packages/djangoer/README.md](packages/djangoer/README.md).
 Working on Djangoer itself: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
