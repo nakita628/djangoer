@@ -113,12 +113,18 @@ test.describe('inference', () => {
 
   test('hover describes a name', async ({ page }) => {
     await page.goto('/source')
-    // Monaco draws an identifier and what is around it as one span, so the pointer is put on the
-    // word by where it is in the text: the font is monospace.
-    const text = 'name = models.CharField(max_length=100)'
-    const span = page.locator('.monaco-editor .view-line span', { hasText: text }).last()
-    const box = await span.boundingBox()
-    if (box === null) throw new Error('The line of `name` is not on screen.')
+    // The line is waited for (a slower machine draws it later), then the pointer is put on the
+    // word by where it is in its token: Monaco may draw an identifier with what is around it as
+    // one span, and the font is monospace.
+    const line = page.locator('.monaco-editor .view-line', {
+      hasText: 'name = models.CharField(max_length=100)',
+    })
+    await expect(line).toBeVisible()
+    const token = line.locator('span[class^="mtk"]', { hasText: 'CharField' }).last()
+    await expect(token).toBeVisible()
+    const text = await token.innerText()
+    const box = await token.boundingBox()
+    if (box === null) throw new Error('The token of `CharField` is not on screen.')
     const at = (text.indexOf('CharField') + 3) / text.length
     await page.mouse.move(box.x + box.width * at, box.y + box.height / 2)
     await expect(page.locator('.monaco-hover-content').first()).toContainText('CharField(')
