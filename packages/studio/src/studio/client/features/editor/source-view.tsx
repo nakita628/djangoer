@@ -1,16 +1,18 @@
-import { Button, Tabs } from '@heroui/react'
+import { Button, Tabs, toast } from '@heroui/react'
 import { Editor } from '@monaco-editor/react'
 import type { OnMount } from '@monaco-editor/react'
 import type { InferResponseType } from 'hono/client'
 import type { editor as MonacoEditor } from 'monaco-editor/editor/editor.api.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LuCopy } from 'react-icons/lu'
+import { LuCopy, LuRotateCcw, LuSave } from 'react-icons/lu'
 
 import type { client } from '../../api/index.js'
 import { SchemaErrorStatus } from '../../components/schema-error-status.js'
 import { SplitPane } from '../../components/split-pane.js'
 import { useCopy } from '../../hooks/copy.js'
+import { usePutSchemaFiles } from '../../hooks/index.js'
 import { useUiStore } from '../../lib/index.js'
+import { problemMessage } from '../../lib/problem.js'
 import { SchemaCanvas } from '../schema/schema-view.js'
 import { EDITOR_OPTIONS, PYTHON_LANGUAGE_ID, setupMonaco, themeName } from './monaco.js'
 import { blockAtLine } from './source-blocks.js'
@@ -19,13 +21,12 @@ type Snapshot = InferResponseType<typeof client.schema.$get, 200>
 
 const SPLIT_KEY = 'djangoer-studio:source-split'
 
-// The files are the project's own; Studio shows them and leaves the writing to the editor they
-// were written in. Python is indented by four.
+// The files are the project's own model files, edited here and written back as they are saved.
+// Python is indented by four spaces.
 const SOURCE_OPTIONS: MonacoEditor.IStandaloneEditorConstructionOptions = {
   ...EDITOR_OPTIONS,
-  readOnly: true,
-  domReadOnly: true,
   tabSize: 4,
+  insertSpaces: true,
   quickSuggestions: false,
   renderValidationDecorations: 'off',
 }
@@ -41,19 +42,24 @@ function SourceEditor({
   value,
   revealLine,
   onCursorLine,
+  onChange,
+  onSave,
 }: {
   readonly path: string
+  /** The text to show: what was typed here, or the file as it is on disk. */
   readonly value: string
   /** A line to scroll to and put the cursor on, when the view opens the file at a place. */
   readonly revealLine: number | null
   readonly onCursorLine: (line: number) => void
+  readonly onChange: (text: string) => void
+  readonly onSave: () => void
 }) {
-  setupMonaco()
+  const monaco = setupMonaco()
   const theme = useUiStore((s) => s.theme)
   const mounted = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
-  const latest = useRef(onCursorLine)
+  const latest = useRef({ onCursorLine, onChange, onSave })
   useEffect(() => {
-    latest.current = onCursorLine
+    latest.current = { onCursorLine, onChange, onSave }
   })
 
   // A link to another class of the file that is already open moves the cursor there.
@@ -64,8 +70,15 @@ function SourceEditor({
   const onMount: OnMount = (editor) => {
     mounted.current = editor
     editor.onDidChangeCursorPosition((event) => {
-      latest.current(event.position.lineNumber)
+      latest.current.onCursorLine(event.position.lineNumber)
     })
+    editor.addCommand(
+      // oxlint-disable-next-line no-bitwise -- Monaco keybindings are bit flags by design
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+      () => {
+        latest.current.onSave()
+      },
+    )
     if (revealLine !== null) reveal(editor, revealLine)
   }
 
@@ -79,13 +92,20 @@ function SourceEditor({
       options={SOURCE_OPTIONS}
       loading={<div className="p-4 text-code text-muted">Loading editor…</div>}
       onMount={onMount}
+      onChange={(text) => {
+        if (text !== undefined) latest.current.onChange(text)
+      }}
     />
   )
 }
 
+/** What was typed into a file and is not on disk yet, with the disk's text it was typed over. */
+type Draft = { readonly text: string; readonly base: string }
+
 /**
- * The source page: each app's `models.py` as it is on disk, read-only, beside the ER diagram of
- * what Django made of it. The model the cursor is in lights up in the diagram.
+ * The source page: each app's `models.py`, edited here and saved back to disk, beside the ER
+ * diagram of what Django made of it. The model the cursor is in lights up in the diagram; a
+ * save restarts the server, and the diagram follows the file a moment later.
  */
 export function SourceView({
   snapshot,
@@ -111,6 +131,28 @@ export function SourceView({
   const [chosenPath, setChosenPath] = useState<string | null>(null)
   const [cursorLine, setCursorLine] = useState(1)
   const { copied, copy } = useCopy()
+  const [drafts, setDrafts] = useState<Readonly<Record<string, Draft>>>({})
+  // The text of the last save of each file: until the server has read it back, the file on
+  // disk and the editor differ, and that is not an unsaved change.
+  const [saved, setSaved] = useState<Readonly<Record<string, string>>>({})
+  // What each file held, as the page knew it, when it was last saved over.
+  const [beforeSave, setBeforeSave] = useState<Readonly<Record<string, string>>>({})
+  const write = usePutSchemaFiles({
+    mutation: {
+      onSuccess: (written) => {
+        setSaved((current) => ({ ...current, [written.path]: written.content }))
+        // What was saved is what the disk now holds: a later change is typed over that.
+        setDrafts((current) => {
+          const draft = current[written.path]
+          if (draft === undefined) return current
+          return { ...current, [written.path]: { text: draft.text, base: written.content } }
+        })
+      },
+      onError: (error) => {
+        toast.danger('The file could not be saved.', { description: problemMessage(error) })
+      },
+    },
+  })
 
   // A tab picked by hand holds until a link names another place.
   const [seenTarget, setSeenTarget] = useState(target)
@@ -133,14 +175,55 @@ export function SourceView({
     return <section className="p-6 text-muted">No models.py in the project&apos;s apps.</section>
   }
 
+  // The save has been read back: the text from before it is not being waited out any more, so
+  // the file going back to it later (a `git checkout`) is a change like any other.
+  if (beforeSave[file.path] !== undefined && file.content === saved[file.path]) {
+    setBeforeSave(({ [file.path]: _seen, ...others }) => others)
+  }
+
+  const draft = drafts[file.path] ?? null
+  const text = draft?.text ?? file.content
+  const dirty = text !== file.content && text !== saved[file.path]
+  // The file was written by another editor while this one held changes of its own. Right after
+  // a save the page still shows the text from before it, until the server has read the file
+  // back: that text is the one being waited out, not a change.
+  const changedOnDisk =
+    draft !== null && dirty && draft.base !== file.content && file.content !== beforeSave[file.path]
+
+  const edit = (next: string) => {
+    setDrafts((current) => {
+      const { [file.path]: previous, ...others } = current
+      // Typing the file back to what is on disk leaves nothing to save.
+      if (next === file.content) return others
+      return { ...others, [file.path]: { text: next, base: previous?.base ?? file.content } }
+    })
+  }
+  const discard = () => {
+    setDrafts(({ [file.path]: _dropped, ...others }) => others)
+  }
+  const save = () => {
+    if (!dirty || write.isPending) return
+    setBeforeSave((current) => ({ ...current, [file.path]: file.content }))
+    write.mutate({ json: { path: file.path, content: text } })
+  }
+  const status = write.isPending
+    ? 'Saving…'
+    : changedOnDisk
+      ? 'Changed on disk'
+      : dirty
+        ? 'Unsaved changes'
+        : 'Saved'
+
   const source = (
     <div className="min-h-0 min-w-0 bg-surface">
       <SourceEditor
         key={file.path}
         path={file.path}
-        value={file.content}
+        value={text}
         revealLine={revealLine}
         onCursorLine={setCursorLine}
+        onChange={edit}
+        onSave={save}
       />
     </div>
   )
@@ -160,17 +243,35 @@ export function SourceView({
       <header className="flex flex-nowrap items-center gap-3.5 border-b border-line bg-surface px-6 py-3">
         <h1 className="page-title shrink-0">Django models</h1>
         <span className="hidden min-w-0 truncate text-lead text-muted sm:inline">
-          <span className="font-mono">{file.path}</span> · {file.content.split('\n').length} lines
-          {schema?.provider ? ` · ${schema.provider}` : ''} · read-only
+          <span className="font-mono">{file.path}</span> · {text.split('\n').length} lines
+          {schema?.provider ? ` · ${schema.provider}` : ''}
         </span>
+        <output aria-label="Save status" className="shrink-0 text-code text-faint">
+          {status}
+        </output>
         <span className="ml-auto flex min-w-0 items-center gap-3">
           <SchemaErrorStatus error={snapshot.error} diagnostics={snapshot.diagnostics} />
         </span>
+        {changedOnDisk ? (
+          <Button className="shrink-0" variant="ghost" onPress={discard}>
+            <LuRotateCcw size={15} />
+            Load from disk
+          </Button>
+        ) : null}
+        <Button
+          className="shrink-0"
+          variant="primary"
+          isDisabled={!dirty || write.isPending}
+          onPress={save}
+        >
+          <LuSave size={15} />
+          Save
+        </Button>
         <Button
           className="shrink-0"
           variant="ghost"
           onPress={() => {
-            copy(file.content)
+            copy(text)
           }}
         >
           <LuCopy size={15} />

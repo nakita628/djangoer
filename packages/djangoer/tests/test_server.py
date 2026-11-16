@@ -134,3 +134,44 @@ def test_a_project_that_does_not_load_says_why_and_serves_nothing_else(tmp_path)
     response = client.get("/api/db")
     assert response.status_code == 503
     assert response.json()["detail"].startswith("The project does not load: SyntaxError")
+
+
+def test_a_model_file_is_written_back_and_no_other_file(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from djangoer.studio import contract
+    from djangoer.studio.app import create_app
+    from djangoer.studio.brands import Alias
+    from djangoer.studio.state import State
+
+    models = tmp_path / "shop" / "models.py"
+    models.parent.mkdir()
+    models.write_text("# before\n")
+    (tmp_path / "secret.py").write_text("KEY = 1\n")
+    state = State(Alias("default"), tmp_path)
+    # The files Studio lists are the ones that may be written.
+    state.snapshot = state.snapshot.model_copy(
+        update={"files": [contract.SchemaFile(path="shop/models.py", content="# before\n")]}
+    )
+    client = TestClient(create_app(state), base_url="http://127.0.0.1")
+
+    written = client.put(
+        "/api/schema/files", json={"path": "shop/models.py", "content": "# after\n"}
+    )
+    assert written.status_code == 200
+    assert written.json() == {"path": "shop/models.py", "content": "# after\n"}
+    assert models.read_text() == "# after\n"
+
+    for path in ("secret.py", "../outside.py", "shop/../secret.py", str(tmp_path / "secret.py")):
+        refused = client.put("/api/schema/files", json={"path": path, "content": "x"})
+        assert refused.status_code == 404, path
+        assert "is not one of the project's model files" in refused.json()["detail"]
+    assert (tmp_path / "secret.py").read_text() == "KEY = 1\n"
+    assert not (tmp_path.parent / "outside.py").exists()
+
+    # A file the system refuses to write is a problem on `path`, not a crash.
+    models.unlink()
+    models.mkdir()
+    failed = client.put("/api/schema/files", json={"path": "shop/models.py", "content": "x"})
+    assert failed.status_code == 422
+    assert failed.json()["errors"][0]["field"] == "path"
