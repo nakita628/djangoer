@@ -56,6 +56,7 @@ uv run just test         # pytest
 pnpm check               # the client's types
 pnpm test                # the client's unit tests
 uv run just check        # all of the above
+uv run just test-e2e     # Studio in Chromium (Playwright), on a copy of examples/blog
 ```
 
 ## How it fits together

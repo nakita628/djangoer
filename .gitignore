@@ -47,3 +47,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# E2E: the throwaway project Studio runs on, and the traces of failed tests
+packages/studio/e2e/.workspace/
+packages/studio/e2e/.results/

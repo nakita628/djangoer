@@ -11,7 +11,8 @@
     "generate": "pnpm -F @djangoer/studio generate",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
-    "lint": "pnpm -F @djangoer/studio lint"
+    "lint": "pnpm -F @djangoer/studio lint",
+    "test:e2e": "pnpm -F @djangoer/studio test:e2e"
   },
   "packageManager": "pnpm@11.7.0"
 }

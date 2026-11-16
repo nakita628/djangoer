@@ -415,8 +415,28 @@ export const lint: NonNullable<UserConfig['lint']> = {
   },
   overrides: [
     {
+      // Playwright's tests: Node, with the page's globals in the callbacks they hand the page.
+      // The unit-test rules (Vitest's) are for src/**/*.test.ts, not for these.
+      files: ['e2e/**/*.ts', 'playwright.config.ts'],
+      env: { node: true, browser: false },
+      rules: {
+        // A test drives one page step by step: each await waits for the one before it.
+        'no-await-in-loop': 'off',
+        // Playwright names its own `test` and `expect`; the jest rules read them as Vitest's.
+        'jest/no-standalone-expect': 'off',
+        'jest/expect-expect': 'off',
+        'jest/no-done-callback': 'off',
+        'jest/valid-title': 'off',
+      },
+    },
+    {
       // A config file's contract is a default export; the ban stays on for src.
-      files: ['vite.config.ts', 'hono-takibi.config.ts', 'hono-takibi.hooks.config.ts'],
+      files: [
+        'vite.config.ts',
+        'hono-takibi.config.ts',
+        'hono-takibi.hooks.config.ts',
+        'playwright.config.ts',
+      ],
       rules: {
         'import/no-default-export': 'off',
       },
@@ -426,7 +446,7 @@ export const lint: NonNullable<UserConfig['lint']> = {
       // ReadonlyDeep<DMMF.*> shapes is the sanctioned `as` exception
       // (CONTRIBUTING.md: tests are exempt from `no as`). Only the rules that police those casts are
       // scoped off here, nothing else is.
-      files: ['**/*.test.ts'],
+      files: ['src/**/*.test.ts'],
       plugins: ['vitest'],
       rules: {
         'typescript/no-explicit-any': 'off',
@@ -619,7 +639,7 @@ export const lint: NonNullable<UserConfig['lint']> = {
       // architecture blocks above. Those rules describe the dependency graph
       // of the shipped modules; a test sits outside that graph and reads the
       // filesystem back to prove what the I/O layer actually wrote.
-      files: ['**/*.test.ts'],
+      files: ['src/**/*.test.ts'],
       rules: {
         'no-restricted-imports': 'off',
       },

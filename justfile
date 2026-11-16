@@ -36,6 +36,10 @@ example-docs:
 test *args:
     uv run pytest {{ args }}
 
+# Run the E2E suite: the client is built first, and Studio runs on a copy of examples/blog
+test-e2e: build
+    pnpm test:e2e
+
 # Run the client's unit tests
 test-client:
     pnpm test
