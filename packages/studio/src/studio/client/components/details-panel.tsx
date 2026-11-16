@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { LuArrowRight } from 'react-icons/lu'
 
 import type { Cardinality, RelationOrigin } from '../../../types/index.js'
+import { hasText } from '../lib/text.js'
 import { FieldIcon } from './field-icon.js'
 import { fieldTypeLabel } from './labels.js'
 
@@ -85,7 +86,7 @@ export function DetailsPanel({
                 {a}
               </div>
             ))}
-            {field.documentation ? (
+            {hasText(field.documentation) ? (
               <div className="pl-5 whitespace-pre-wrap text-muted">{field.documentation}</div>
             ) : null}
           </div>
@@ -119,7 +120,7 @@ export function DetailsPanel({
                 {' → '}
                 {CARDINALITY_LABELS[other.cardinality]}
               </span>
-              {relation.onDelete ? (
+              {hasText(relation.onDelete) ? (
                 <span className="text-muted"> · onDelete: {relation.onDelete}</span>
               ) : null}
               {relation.origin === 'implicit-many-to-many' ? (

@@ -1,4 +1,5 @@
 from djangoer.studio import inputs
+from djangoer.studio.brands import Offset
 from djangoer.studio.domain.orm import analyze as orm_analyze
 from djangoer.studio.domain.orm import complete as orm_complete
 
@@ -13,19 +14,19 @@ def check(query):
 
 
 def complete(query, offset):
-    return orm_complete.complete(inputs.QueryAt(query=query, offset=offset))
+    return orm_complete.complete(inputs.QueryAt(query=query, offset=Offset(offset)))
 
 
 def detail(query, offset, name):
-    return orm_complete.detail(inputs.CompletionAt(query=query, offset=offset, name=name))
+    return orm_complete.detail(inputs.CompletionAt(query=query, offset=Offset(offset), name=name))
 
 
 def hover(query, offset):
-    return orm_complete.hover(inputs.QueryAt(query=query, offset=offset))
+    return orm_complete.hover(inputs.QueryAt(query=query, offset=Offset(offset)))
 
 
 def signature(query, offset):
-    return orm_complete.signature(inputs.QueryAt(query=query, offset=offset))
+    return orm_complete.signature(inputs.QueryAt(query=query, offset=Offset(offset)))
 
 
 def calls(query):
@@ -135,13 +136,19 @@ def test_completion_follows_the_chain():
 
 def test_detail_hover_and_signature():
     assert detail("Order.objects.", 14, "filter")["detail"] == "filter(*args, **kwargs)"
-    assert detail("Order.objects.filter(", 21, "customer")["detail"].startswith(
-        "customer: ForeignKey(Customer"
-    )
+    customer = detail("Order.objects.filter(", 21, "customer")["detail"]
+    assert customer is not None
+    assert customer.startswith("customer: ForeignKey(Customer")
     query = 'Order.objects.filter(customer__name__icontains="a")'
-    assert "class Order(models.Model):" in hover(query, 2)["contents"]
-    assert "name: CharField(max_length=100)" in hover(query, query.index("name") + 1)["contents"]
-    assert "icontains (lookup)" in hover(query, query.index("icontains") + 1)["contents"]
+
+    def contents(offset: int) -> str:
+        found = hover(query, offset)["contents"]
+        assert found is not None
+        return found
+
+    assert "class Order(models.Model):" in contents(2)
+    assert "name: CharField(max_length=100)" in contents(query.index("name") + 1)
+    assert "icontains (lookup)" in contents(query.index("icontains") + 1)
     assert hover(query, len(query))["contents"] is None
     help_ = signature("Order.objects.filter(paid=True, ", 32)
     assert help_["signatures"][0]["label"] == "filter(*args, **kwargs)"

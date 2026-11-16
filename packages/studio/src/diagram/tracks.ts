@@ -234,9 +234,9 @@ export function separateRoutes(routes: readonly Route[], cards: readonly Box[]):
   // each pass having settled at least one of them.
   const settle = (current: readonly Route[], passes: number): readonly Route[] => {
     const next = spreadVertical(
-      spreadVertical(current, cards).map((points) => points.map(transposed)),
+      spreadVertical(current, cards).map((points) => points.map((point) => transposed(point))),
       across,
-    ).map((points) => points.map(transposed))
+    ).map((points) => points.map((point) => transposed(point)))
     const moved = next.some((points, route) =>
       points.some((point, index) => {
         const before = current[route]?.[index]

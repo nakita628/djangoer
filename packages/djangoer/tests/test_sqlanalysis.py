@@ -1,10 +1,11 @@
 from djangoer.studio import inputs
+from djangoer.studio.brands import Alias, Sql
 from djangoer.studio.domain import sqlanalysis
 from djangoer.studio.domain.sqlanalysis import to_format_placeholders
 
 
 def analyze(sql):
-    return sqlanalysis.analyze(inputs.AnalyzeSql(alias="default", sql=sql))
+    return sqlanalysis.analyze(inputs.AnalyzeSql(alias=Alias("default"), sql=Sql(sql)))
 
 
 def one(sql):

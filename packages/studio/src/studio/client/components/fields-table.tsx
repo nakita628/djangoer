@@ -2,6 +2,7 @@ import { Chip, Table } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef } from 'react'
 
+import { hasText } from '../lib/text.js'
 import { FieldIcon } from './field-icon.js'
 import { fieldTypeLabel } from './labels.js'
 import { MarkedText } from './marked-text.js'
@@ -136,7 +137,7 @@ export function FieldsTable({
                   className="py-2.5 font-mono text-code font-semibold whitespace-nowrap"
                 >
                   <MarkedText text={field.name} query={query} />
-                  {field.dbName ? (
+                  {hasText(field.dbName) ? (
                     <span className="mt-0.5 block text-meta font-normal text-faint">
                       {field.dbName}
                     </span>

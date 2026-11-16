@@ -59,7 +59,7 @@ export const test = base.extend<{
       .poll(
         async () => {
           const response = await request.get('/api/schema').catch(() => null)
-          if (!response?.ok()) return null
+          if (response?.ok() !== true) return null
           const snapshot = Snapshot.parse(await response.json())
           return snapshot.files[0]?.content ?? null
         },

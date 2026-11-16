@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from djangoer.studio import inputs
+from djangoer.studio.brands import Offset
 from djangoer.studio.domain import source
 
 ROOT = Path(__file__).parent
@@ -9,7 +10,7 @@ TEXT = (ROOT / PATH).read_text()
 
 
 def labels(text: str) -> list[str]:
-    at = inputs.SourceAt(path=PATH, content=text, offset=len(text), root=ROOT)
+    at = inputs.SourceAt(path=PATH, content=text, offset=Offset(len(text)), root=ROOT)
     return [item["label"] for item in source.complete(at)["items"]]
 
 
@@ -26,12 +27,12 @@ def test_completion_follows_python_as_an_editor_does():
 
 def test_hover_describes_the_name_under_the_cursor():
     offset = TEXT.index("CharField(max_length=100)") + 3
-    at = inputs.SourceAt(path=PATH, content=TEXT, offset=offset, root=ROOT)
+    at = inputs.SourceAt(path=PATH, content=TEXT, offset=Offset(offset), root=ROOT)
     contents = source.hover(at)["contents"]
     assert contents.startswith("```python\nCharField(")
     # A blank line names nothing.
     blank = TEXT.index("\n\n\n") + 1
-    nowhere = inputs.SourceAt(path=PATH, content=TEXT, offset=blank, root=ROOT)
+    nowhere = inputs.SourceAt(path=PATH, content=TEXT, offset=Offset(blank), root=ROOT)
     assert source.hover(nowhere) == {"contents": None, "range": None}
 
 
@@ -51,7 +52,7 @@ def test_check_finds_where_the_syntax_breaks():
 def test_without_jedi_the_editor_has_no_suggestions_and_no_errors(monkeypatch):
     monkeypatch.setattr(source, "_jedi", lambda: None)
     at = inputs.SourceAt(
-        path=PATH, content=TEXT + "\n\nfield = models.Cha", offset=len(TEXT) + 19, root=ROOT
+        path=PATH, content=TEXT + "\n\nfield = models.Cha", offset=Offset(len(TEXT) + 19), root=ROOT
     )
     assert source.complete(at) == {"items": []}
     assert source.hover(at) == {"contents": None, "range": None}

@@ -117,11 +117,9 @@ def test_a_project_that_does_not_load_says_why_and_serves_nothing_else(tmp_path)
     broken = tmp_path / "shop" / "models.py"
     broken.parent.mkdir()
     broken.write_text("class Customer(models.Model)\n    name = 1\n")
-    try:
+    with pytest.raises(SyntaxError) as raised:
         compile(broken.read_text(), str(broken), "exec")
-    except SyntaxError as error:
-        failure = error
-    state = State(Alias("default"), tmp_path, failure)
+    state = State(Alias("default"), tmp_path, raised.value)
     client = TestClient(create_app(state), base_url="http://127.0.0.1")
 
     snapshot = client.get("/api/schema").json()

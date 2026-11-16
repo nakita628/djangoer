@@ -297,7 +297,7 @@ export function SqlView({
       <header className="flex flex-wrap items-center gap-3.5 border-b border-line bg-surface px-6 py-3">
         <h1 className="page-title">SQL</h1>
         <span className="min-w-0 text-lead [overflow-wrap:anywhere] text-muted">
-          {database?.connected
+          {database?.connected === true
             ? `${database.dialect ?? ''} · ${database.url ?? ''}`
             : 'No database connected'}
         </span>

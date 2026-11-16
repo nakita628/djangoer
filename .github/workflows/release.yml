@@ -1,10 +1,9 @@
 # Releases djangoer when its version (packages/djangoer/pyproject.toml) is not on PyPI yet, once CI
-# has passed on main. `plan` reads the version, asks PyPI, and checks that
-# packages/djangoer/CHANGELOG.md has the entry (it is the release note; there is no GitHub release);
-# then the commit is tagged `v<version>`, the Studio client is built into the package, the wheel
-# and the sdist are built, and published with trusted publishing (OIDC, no token). Every step
-# skips what is already done, so a run that failed part-way is finished by re-running its failed
-# jobs. A manual run builds the current ref and publishes it to TestPyPI only.
+# has passed on main: the commit is tagged `v<version>`, the Studio client is built into the
+# package, the wheel and the sdist are built and published with trusted publishing (OIDC, no
+# token), and the GitHub release is created with generated notes. Every step skips what is
+# already done, so a run that failed part-way is finished by re-running its failed jobs. A manual
+# run builds the current ref and publishes it to TestPyPI only.
 #
 # The wheel is pure Python (`py3-none-any`): the built client is data inside it, so one build
 # serves every platform and interpreter.
@@ -48,7 +47,7 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
-      - name: Read the version, ask PyPI, check the changelog
+      - name: Read the version and ask PyPI
         id: plan
         run: |
           set -euo pipefail
@@ -63,11 +62,6 @@ jobs:
               exit 1
               ;;
           esac
-          # The release note is the package's CHANGELOG.md: a version without an entry is not released.
-          if ! grep -qx "## $VERSION" "$DIR/CHANGELOG.md"; then
-            echo "::error file=$DIR/CHANGELOG.md::$PACKAGE $VERSION has no '## $VERSION' entry in $DIR/CHANGELOG.md. Add one, then push again"
-            exit 1
-          fi
           # A manual run always builds (for TestPyPI); a release builds only what PyPI does not have.
           BUILD=$UNPUBLISHED
           [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && BUILD=true
@@ -199,3 +193,29 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           skip-existing: true
+
+  release:
+    name: Create GitHub release
+    needs: [plan, tag, publish-pypi]
+    # After a publish, or when this version was on PyPI already (a re-run that only lacks the
+    # release): the release is created once, from the tag, with the notes GitHub writes from the
+    # pull requests since the last one.
+    if: >-
+      !cancelled() && github.event_name == 'workflow_run' &&
+      needs.plan.result == 'success' && needs.tag.result == 'success' &&
+      (needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release v$VERSION already exists; skip"
+            exit 0
+          fi
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes

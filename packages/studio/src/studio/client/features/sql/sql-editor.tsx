@@ -84,6 +84,8 @@ const highlightField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(value, transaction) {
     const effect = transaction.effects.find((candidate) => candidate.is(setHighlight))
+    // A DecorationSet maps through a ChangeSet: not an array, and not a callback.
+    // oxlint-disable-next-line unicorn/no-array-callback-reference
     if (effect === undefined) return value.map(transaction.changes)
     const range = effect.value
     if (range === null) return Decoration.none
@@ -97,6 +99,8 @@ const diagnosticsField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(value, transaction) {
     const effect = transaction.effects.find((candidate) => candidate.is(setDiagnostics))
+    // A DecorationSet maps through a ChangeSet: not an array, and not a callback.
+    // oxlint-disable-next-line unicorn/no-array-callback-reference
     if (effect === undefined) return value.map(transaction.changes)
     const marks = effect.value
       .flatMap((diagnostic): CmRange<Decoration>[] => {
@@ -174,12 +178,19 @@ function aliasesOf(text: string, tables: readonly EditorTable[]) {
 function tooltipDom(title: string, detail: string, lines: readonly string[]) {
   const dom = document.createElement('div')
   dom.className = 'cm-schema-tooltip'
-  const head = dom.appendChild(document.createElement('div'))
+  const head = document.createElement('div')
+  dom.append(head)
   head.className = 'cm-schema-tooltip-head'
-  head.appendChild(document.createElement('strong')).textContent = title
-  head.appendChild(document.createElement('span')).textContent = detail
+  const strong = document.createElement('strong')
+  strong.textContent = title
+  head.append(strong)
+  const kind = document.createElement('span')
+  kind.textContent = detail
+  head.append(kind)
   for (const line of lines) {
-    dom.appendChild(document.createElement('div')).textContent = line
+    const row = document.createElement('div')
+    row.textContent = line
+    dom.append(row)
   }
   return dom
 }

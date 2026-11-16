@@ -21,6 +21,7 @@ import {
 } from 'react-icons/lu'
 
 import type { client } from '../../api/index.js'
+import { hasText } from '../../lib/text.js'
 import { nodeLines } from './flow-layout.js'
 
 type Analysis = InferResponseType<typeof client.db.analyze.$post, 200>
@@ -106,7 +107,7 @@ function FlowNodeComponent({ data, selected }: NodeProps<FlowNodeType>) {
                   />
                 ) : null}
                 <span className="min-w-0 flex-1 truncate">{line}</span>
-                {column?.dataType ? (
+                {hasText(column?.dataType) ? (
                   <span className="shrink-0 text-caption text-faint">{column.dataType}</span>
                 ) : null}
               </div>

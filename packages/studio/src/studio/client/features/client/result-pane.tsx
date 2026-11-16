@@ -132,11 +132,13 @@ export function ResultPane({
       </div>
       {tab === 'sql' ? (
         statements === null ? (
-          sql.note !== null ? (
+          sql.note === null ? (
+            sqlFailed ? (
+              <pre className="error-box m-4 whitespace-pre-wrap">{problemMessage(sql.error)}</pre>
+            ) : null
+          ) : (
             <div className="p-6 text-muted">{sql.note}</div>
-          ) : sqlFailed ? (
-            <pre className="error-box m-4 whitespace-pre-wrap">{problemMessage(sql.error)}</pre>
-          ) : null
+          )
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
             {sql.stale && sql.note !== null ? (

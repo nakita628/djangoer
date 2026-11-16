@@ -45,8 +45,11 @@ playwright-report/
 .DS_Store
 Thumbs.db
 .idea/
-.vscode/
 *.swp
+# The workspace's editor settings and recommended extensions are shared; nothing else of .vscode.
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 
 # E2E: the throwaway project Studio runs on, and the traces of failed tests
 packages/studio/e2e/.workspace/

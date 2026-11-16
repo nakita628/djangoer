@@ -40,7 +40,7 @@ function isNullType(schema: Readonly<Record<string, unknown>>) {
 
 /** The document with every `{ type: 'null' }` written as `{ const: null }`. */
 function withConstNull(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withConstNull)
+  if (Array.isArray(value)) return value.map((item) => withConstNull(item))
   if (!isRecord(value)) return value
   if (isNullType(value)) return { const: null }
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withConstNull(item)]))

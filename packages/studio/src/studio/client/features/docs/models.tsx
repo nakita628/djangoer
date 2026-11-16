@@ -4,6 +4,7 @@ import { Fragment } from 'react'
 import { LuPlay } from 'react-icons/lu'
 
 import { CodeBlock } from '../../components/code-block.js'
+import { hasText } from '../../lib/text.js'
 import { fieldTypeAnchor, typeRefAnchor, typeSectionId } from './anchors.js'
 import { TypeLink } from './type-link.js'
 
@@ -173,7 +174,7 @@ function ModelSection({ model }: { readonly model: DocsModel }) {
   return (
     <section id={`model-${model.name}`} className="scroll-mt-4 border-b border-line px-6 py-6">
       <h2 className="m-0 font-mono text-heading font-bold tracking-tight">{model.name}</h2>
-      {model.documentation ? (
+      {hasText(model.documentation) ? (
         <p className="m-0 pt-2 whitespace-pre-wrap text-muted">{model.documentation}</p>
       ) : null}
       {model.directives.length > 0 ? (

@@ -78,15 +78,15 @@ export function routePoints(source: Point, target: Point, cards: readonly Box[])
   const inRange = (x: number) => x > source.x + EDGE_OFFSET && x < target.x - EDGE_OFFSET
   const channels = inTheWay
     .flatMap((card) => [card.x - CLEARANCE, card.x + card.width + CLEARANCE])
-    .filter(inRange)
+    .filter((x) => inRange(x))
   const lanes = inTheWay.flatMap((card) => [card.y - CLEARANCE, card.y + card.height + CLEARANCE])
   // Where a lane comes down: just past the last card it clears first, then in front of one, and
   // right in front of the target last. They cost the same, and of two equal routes the first is
   // kept, so the edge comes down as soon as it is past what is in its way and keeps a stretch
   // into its target that no other edge on the lane shares — where its caption can say which edge
   // it is.
-  const past = inTheWay.map((card) => card.x + card.width + CLEARANCE).filter(inRange)
-  const before = inTheWay.map((card) => card.x - CLEARANCE).filter(inRange)
+  const past = inTheWay.map((card) => card.x + card.width + CLEARANCE).filter((x) => inRange(x))
+  const before = inTheWay.map((card) => card.x - CLEARANCE).filter((x) => inRange(x))
   const descents = [
     ...past.toSorted((a, b) => b - a),
     ...before.toSorted((a, b) => b - a),

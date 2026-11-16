@@ -79,15 +79,15 @@ export function ClientView({ initialQuery = '' }: { readonly initialQuery?: stri
   const hasWrite = calls.some((call) => call.write)
   const problems = markers.length > 0
   const sqlNote =
-    status?.available !== true
-      ? 'The Django ORM is not available.'
-      : calls.length === 0 && !problems
+    status?.available === true
+      ? calls.length === 0 && !problems
         ? 'Type a query to see the SQL it sends.'
         : problems
           ? 'Fix the problems to update the SQL: this is what the query last sent.'
           : hasWrite
             ? 'A write shows its SQL when it is run.'
             : null
+      : 'The Django ORM is not available.'
   const preview = useClientPreview(settled, !ran && !checking && sqlNote === null)
   // What is going on with the text, in the editor's status bar: being read, being checked, and
   // what was found. The run says how it is going in the result pane.
@@ -172,7 +172,11 @@ export function ClientView({ initialQuery = '' }: { readonly initialQuery?: stri
         <div className="flex flex-wrap items-center gap-1.5 border-t border-line bg-surface-2 px-4 py-1.5 text-code">
           {calls.length > 0 ? (
             <span className="heading mb-0">
-              {analysis.data?.transaction ? 'atomic' : calls.length === 1 ? 'Call' : 'Calls'}
+              {analysis.data?.transaction === true
+                ? 'atomic'
+                : calls.length === 1
+                  ? 'Call'
+                  : 'Calls'}
             </span>
           ) : null}
           {calls.map((call) => (

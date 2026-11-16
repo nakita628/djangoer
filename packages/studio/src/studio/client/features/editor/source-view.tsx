@@ -17,6 +17,7 @@ import { useDebounced } from '../../hooks/debounce.js'
 import { getSchemaKey, usePutSchemaFiles } from '../../hooks/index.js'
 import { useUiStore } from '../../lib/index.js'
 import { problemMessage } from '../../lib/problem.js'
+import { hasText } from '../../lib/text.js'
 import { SchemaCanvas } from '../schema/schema-view.js'
 import { EDITOR_OPTIONS, PYTHON_LANGUAGE_ID, setupMonaco, themeName } from './monaco.js'
 import { blockAtLine } from './source-blocks.js'
@@ -328,7 +329,7 @@ export function SourceView({
         <h1 className="page-title shrink-0">Django models</h1>
         <span className="hidden min-w-0 truncate text-lead text-muted sm:inline">
           <span className="font-mono">{file.path}</span> · {text.split('\n').length} lines
-          {schema?.provider ? ` · ${schema.provider}` : ''}
+          {hasText(schema?.provider) ? ` · ${schema.provider}` : ''}
         </span>
         <output aria-label="Save status" className="shrink-0 text-code text-faint">
           {status}

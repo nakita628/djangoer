@@ -45,7 +45,7 @@ type Entry = {
  * both Meta and Control are accepted everywhere, so a Mac keyboard on Linux is not left out.
  */
 function shortcutLabel() {
-  const apple = /mac|iphone|ipad/iu.test(globalThis.navigator?.platform ?? '')
+  const apple = /mac|iphone|ipad/iu.test(globalThis.navigator.platform)
   return apple ? '⌘K' : 'Ctrl K'
 }
 

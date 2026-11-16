@@ -6,7 +6,7 @@ describe('completionKindOf', () => {
   it('shows a general kind with the Monaco kind of the same name', () => {
     expect(
       ['property', 'method', 'function', 'const', 'let', 'enum member', 'keyword', 'class'].map(
-        completionKindOf,
+        (kind) => completionKindOf(kind),
       ),
     ).toStrictEqual([
       'Property',
@@ -21,9 +21,9 @@ describe('completionKindOf', () => {
   })
 
   it('shows what a name is in a Django ORM query', () => {
-    expect(['model', 'field', 'relation', 'lookup', 'manager'].map(completionKindOf)).toStrictEqual(
-      ['Class', 'Field', 'Reference', 'Operator', 'Property'],
-    )
+    expect(
+      ['model', 'field', 'relation', 'lookup', 'manager'].map((kind) => completionKindOf(kind)),
+    ).toStrictEqual(['Class', 'Field', 'Reference', 'Operator', 'Property'])
   })
 
   it('shows a kind the server adds later as plain text rather than failing', () => {

@@ -40,6 +40,10 @@ line-length = 100
 target-version = "py310"
 extend-exclude = ["node_modules", "packages/studio"]
 
+[tool.ruff.format]
+# Code in a docstring is formatted as the code around it is.
+docstring-code-format = true
+
 [tool.ruff.lint]
 select = [
   "E", # pycodestyle errors
@@ -243,11 +247,17 @@ allow_indirect_imports = true
 
 # ---------------------------------------------------------------- pyright
 # The layers Studio types end to end: the contract, the errors, the services, the use cases, the
-# handlers and the app. The domain is left out: it reads Django's models through `_meta`, which
+# handlers and the app, and the tests that drive them. The domain is left out: it reads Django's models through `_meta`, which
 # Django does not type, so a checker would report the framework rather than the code.
 [tool.pyright]
-include = ["packages/djangoer/src/djangoer"]
-exclude = ["**/__pycache__", "**/static", "packages/djangoer/src/djangoer/studio/domain"]
+include = ["packages/djangoer/src/djangoer", "packages/djangoer/tests", "lint"]
+exclude = [
+  "**/__pycache__",
+  "**/static",
+  "packages/djangoer/src/djangoer/studio/domain",
+  # A Django project for the tests to run on: its models are Django's, which Django does not type.
+  "packages/djangoer/tests/project",
+]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.10"

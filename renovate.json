@@ -49,13 +49,13 @@
       "groupName": "Python dev tools"
     },
     {
-      "description": "CI (ruff, actionlint, zizmor, pytest on every Python and Django, the client's types, tests and build) is the gate: Renovate merges once every check is green.",
+      "description": "CI (lint, types, pytest on every Python and Django, the client's tests and build) and E2E are the gate: Renovate merges once every check is green.",
       "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest"],
       "matchCurrentVersion": "!/^0/",
       "automerge": true
     },
     {
-      "description": "Changes to the published metadata are reviewed by hand (and need a version bump + CHANGELOG entry to ship).",
+      "description": "Changes to the published metadata are reviewed by hand (and need a version bump to ship).",
       "matchManagers": ["pep621"],
       "matchDepTypes": ["project.dependencies", "build-system.requires"],
       "automerge": false

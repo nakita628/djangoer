@@ -75,7 +75,7 @@ export function PlanView({
           Explain
         </Button>
       </div>
-      {error !== null ? <div className="error-box m-4">{error}</div> : null}
+      {error === null ? null : <div className="error-box m-4">{error}</div>}
       {plan === null ? null : (
         <>
           <PlanTree nodes={plan.nodes} parent={null} depth={0} />

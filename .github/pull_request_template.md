@@ -27,7 +27,7 @@ person reading the release notes, not for the diff.
 
 ## When
 
-<!-- Release impact: `none` | `next release` | `version bumped to x.y.z` (with its entry in packages/djangoer/CHANGELOG.md). -->
+<!-- Release impact: `none` | `next release` | `version bumped to x.y.z`. The title is what the generated release notes say. -->
 
 ## How
 
@@ -37,5 +37,6 @@ page for a change to the client. Tick only what you ran; paste the output of any
 -->
 
 - [ ] `uv run just lint`
-- [ ] `uv run just test`
-- [ ] `pnpm check` and `pnpm test`, when the client changed
+- [ ] `uv run just typecheck`
+- [ ] `uv run just test` and `uv run just test-client`
+- [ ] `uv run just test-e2e`, when Studio changed

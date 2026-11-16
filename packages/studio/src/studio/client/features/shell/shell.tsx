@@ -6,6 +6,7 @@ import { SchemaErrorBanner } from '../../components/schema-error-banner.js'
 import { useStudioEvents } from '../../hooks/events.js'
 import { useSchema } from '../../hooks/index.js'
 import { useUiStore } from '../../lib/index.js'
+import { hasText } from '../../lib/text.js'
 import { CommandPalette, PaletteButton } from '../palette/palette.js'
 import { Sidebar } from '../sidebar/sidebar.js'
 
@@ -41,7 +42,7 @@ export function Shell() {
         </div>
       )}
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        {snapshot?.error && schema !== null && pathname !== '/source' ? (
+        {hasText(snapshot?.error) && schema !== null && pathname !== '/source' ? (
           <SchemaErrorBanner
             error={snapshot.error}
             diagnostics={snapshot.diagnostics}

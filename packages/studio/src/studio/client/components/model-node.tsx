@@ -11,6 +11,7 @@ import {
   fieldRowHeight,
   uniqueColumns,
 } from '../features/schema/layout.js'
+import { hasText } from '../lib/text.js'
 import { FieldIcon } from './field-icon.js'
 import { BADGE, CONSTRAINT_STYLES, fieldTypeLabel, UNIQUE_BADGE } from './labels.js'
 import { OpenNodeLink } from './open-node-link.js'
@@ -43,7 +44,7 @@ function ModelNodeComponent({ data, selected }: NodeProps<ModelNodeType>) {
         />
         <span className="mr-auto flex min-w-0 items-center gap-2">
           <span className="text-body font-bold">{model.name}</span>
-          {model.dbName ? (
+          {hasText(model.dbName) ? (
             <span className="truncate text-meta opacity-60">{model.dbName}</span>
           ) : null}
         </span>

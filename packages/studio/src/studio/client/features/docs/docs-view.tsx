@@ -74,7 +74,7 @@ export function DocsView({ docs }: { readonly docs: Docs }) {
   // has nothing to scroll to until the sections exist; the browser only scrolls on a click.
   useEffect(() => {
     if (hash === '' || docs.models.length === 0) return
-    document.getElementById(decodeURIComponent(hash))?.scrollIntoView()
+    document.querySelector(`#${CSS.escape(decodeURIComponent(hash))}`)?.scrollIntoView()
   }, [hash, docs])
 
   return (

@@ -442,11 +442,11 @@ export function DataGrid({
       }}
     >
       <Table.ScrollContainer className={`min-h-0 overflow-auto${loading ? ' opacity-60' : ''}`}>
-        {!editable ? (
+        {editable ? null : (
           <div className="border-b border-line bg-surface-2 px-6 py-2 text-code text-muted">
             This model has no primary key or unique field, so rows are read-only.
           </div>
-        ) : null}
+        )}
         {/* The rows are not React Aria's to select: with a `selectionMode` it makes a click
             anywhere on a row tick it, and a click here picks the value under the pointer. The
             ticks are the checkbox column's alone, and its checkboxes step out of the table's

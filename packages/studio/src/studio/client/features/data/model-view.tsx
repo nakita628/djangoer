@@ -30,6 +30,7 @@ import {
 } from '../../hooks/index.js'
 import { downloadFile } from '../../lib/index.js'
 import { problemMessage } from '../../lib/problem.js'
+import { hasText } from '../../lib/text.js'
 import { keyLabel, keyOf, rowId, toCsv, toJson, toTsv } from './cells.js'
 import { loadHiddenColumns, saveHiddenColumns } from './columns.js'
 import { PAGE_SIZE } from './paging.js'
@@ -110,7 +111,7 @@ export function ModelView({
   const connected = database?.connected ?? false
   // A link that names a field means the fields, whichever tab the database would have opened.
   const activeTab: 'data' | 'fields' =
-    tab ?? (field !== null ? 'fields' : connected ? 'data' : 'fields')
+    tab ?? (field === null ? (connected ? 'data' : 'fields') : 'fields')
   const [query, setQuery] = useState('')
   const [skip, setSkip] = useState(0)
   const [details, setDetails] = useState(true)
@@ -258,7 +259,7 @@ export function ModelView({
       <div className="flex min-h-0 min-w-0 flex-col">
         <header className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-6 py-3">
           <h1 className="page-title">{model.name}</h1>
-          {model.dbName ? (
+          {hasText(model.dbName) ? (
             <span className="font-mono text-ui text-muted">{model.dbName}</span>
           ) : null}
           <SearchField
@@ -411,49 +412,51 @@ export function ModelView({
           ) : null}
         </div>
         {activeTab === 'data' ? (
-          !connected ? (
+          connected ? (
+            rows.isError ? (
+              <div className="error-box m-6">The rows could not be loaded.</div>
+            ) : page === null ? (
+              <div className="p-6 text-muted">Loading rows…</div>
+            ) : (
+              <DataGrid
+                schema={schema}
+                model={model}
+                rows={page.rows}
+                rowKey={page.key}
+                hiddenColumns={hidden}
+                total={page.total}
+                skip={page.skip}
+                search={applied}
+                loading={rows.isFetching}
+                saving={saving}
+                adding={adding}
+                selected={selected}
+                onSelectedChange={setSelected}
+                onAddingChange={setAdding}
+                onPage={goToPage}
+                onClearSearch={() => {
+                  search('')
+                }}
+                onInsert={(values: Row) => {
+                  insert.mutate({ param, json: { values } })
+                }}
+                onUpdate={(where, values) => {
+                  update.mutate({ param, json: { where, values } })
+                }}
+                onDeleteRequest={setPending}
+              />
+            )
+          ) : (
             <div className="m-6 rounded-[10px] border border-line bg-surface p-5 text-muted">
               <div className="mb-1 font-semibold text-ink">Database not reachable</div>
               <pre className="m-0 font-mono text-code whitespace-pre-wrap">
                 {database?.error ?? "Check DATABASES in the project's settings."}
               </pre>
             </div>
-          ) : rows.isError ? (
-            <div className="error-box m-6">The rows could not be loaded.</div>
-          ) : page === null ? (
-            <div className="p-6 text-muted">Loading rows…</div>
-          ) : (
-            <DataGrid
-              schema={schema}
-              model={model}
-              rows={page.rows}
-              rowKey={page.key}
-              hiddenColumns={hidden}
-              total={page.total}
-              skip={page.skip}
-              search={applied}
-              loading={rows.isFetching}
-              saving={saving}
-              adding={adding}
-              selected={selected}
-              onSelectedChange={setSelected}
-              onAddingChange={setAdding}
-              onPage={goToPage}
-              onClearSearch={() => {
-                search('')
-              }}
-              onInsert={(values: Row) => {
-                insert.mutate({ param, json: { values } })
-              }}
-              onUpdate={(where, values) => {
-                update.mutate({ param, json: { where, values } })
-              }}
-              onDeleteRequest={setPending}
-            />
           )
         ) : (
           <>
-            {model.documentation ? (
+            {hasText(model.documentation) ? (
               <p className="m-0 border-b border-line bg-surface-2 px-6 py-2.5 whitespace-pre-wrap text-muted">
                 {model.documentation}
               </p>

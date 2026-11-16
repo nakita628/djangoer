@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "charliermarsh.ruff",
+    "ms-python.python",
+    "ms-pyright.pyright",
+    "oxc.oxc-vscode",
+    "bradlc.vscode-tailwindcss",
+    "ms-playwright.playwright",
+    "tamasfe.even-better-toml",
+    "editorconfig.editorconfig"
+  ]
+}

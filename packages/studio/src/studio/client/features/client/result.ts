@@ -9,7 +9,7 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
  */
 export function tableOf(value: unknown) {
   const items = Array.isArray(value) ? value : [value]
-  if (items.length === 0 || !items.every(isRecord)) return null
+  if (items.length === 0 || !items.every((item) => isRecord(item))) return null
   const columns = [...new Set(items.flatMap((item) => Object.keys(item)))]
   const rows = items.map((item) =>
     Object.fromEntries(

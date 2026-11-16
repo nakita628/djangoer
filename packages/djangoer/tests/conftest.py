@@ -1,3 +1,5 @@
+# Django adds `objects` to every model class as it is created, which no annotation says:
+# pyright: reportAttributeAccessIssue=false
 import os
 import sys
 import tempfile
@@ -50,9 +52,10 @@ def client():
     from fastapi.testclient import TestClient
 
     from djangoer.studio.app import create_app
+    from djangoer.studio.brands import Alias
     from djangoer.studio.state import State
 
-    app = create_app(State("default", Path(__file__).parent))
+    app = create_app(State(Alias("default"), Path(__file__).parent))
     return TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
 
 

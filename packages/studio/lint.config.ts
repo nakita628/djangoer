@@ -5,7 +5,51 @@ import type { UserConfig } from 'vite-plus'
 // the ones for browser code, the diagram and the shared types. What Hekireki holds its own
 // server and generators to stays there; the server here is Python, and is held to its rules by
 // ruff, import-linter and lint/studio.py (see the repository's pyproject.toml).
-export const lint: NonNullable<UserConfig['lint']> = {
+/**
+ * The components longer than the limits came from Hekireki as they are. Each has a ceiling at its
+ * present length (lines of code, as the rules count them), so it can only get shorter: split it,
+ * then lower its number here, or drop the entry once it is under the limit.
+ */
+const CEILINGS: Readonly<Record<string, { readonly function?: number; readonly file?: number }>> = {
+  'src/studio/client/components/data-grid.tsx': { function: 403, file: 688 },
+  'src/studio/client/components/details-panel.tsx': { function: 120 },
+  'src/studio/client/components/fields-table.tsx': { function: 125 },
+  'src/studio/client/components/model-node.tsx': { function: 130 },
+  'src/studio/client/components/result-table.tsx': { function: 140 },
+  'src/studio/client/features/client/client-view.tsx': { function: 293 },
+  'src/studio/client/features/client/result-pane.tsx': { function: 169 },
+  'src/studio/client/features/data/model-view.tsx': { function: 377, file: 463 },
+  'src/studio/client/features/editor/source-view.tsx': { function: 215 },
+  'src/studio/client/features/palette/palette.tsx': { function: 186 },
+  'src/studio/client/features/schema/schema-view.tsx': { function: 215 },
+  'src/studio/client/features/sidebar/sidebar.tsx': { function: 147 },
+  'src/studio/client/features/sql/columns-view.tsx': { function: 125 },
+  'src/studio/client/features/sql/flow-view.tsx': { function: 108 },
+  'src/studio/client/features/sql/sql-editor.tsx': { function: 126 },
+  'src/studio/client/features/sql/sql-view.tsx': { function: 266 },
+}
+
+const SIZE = { skipBlankLines: true, skipComments: true } as const
+
+type Lint = NonNullable<UserConfig['lint']>
+type Override = NonNullable<Lint['overrides']>[number]
+
+/** The override that holds one file to its ceiling. */
+function ceilingOverride(
+  file: string,
+  ceiling: { readonly function?: number; readonly file?: number },
+) {
+  const rules: NonNullable<Override['rules']> = {}
+  if (ceiling.function !== undefined) {
+    rules['max-lines-per-function'] = ['error', { max: ceiling.function, ...SIZE, IIFEs: true }]
+  }
+  if (ceiling.file !== undefined) {
+    rules['max-lines'] = ['error', { max: ceiling.file, ...SIZE }]
+  }
+  return { files: [file], rules } satisfies Override
+}
+
+export const lint: Lint = {
   env: { node: true, es2024: true },
   // What is generated is not written by hand, and is not linted as if it were: the type of the
   // app, the Hono client and the hooks by hono-takibi from openapi.json, and routeTree.gen.ts
@@ -40,11 +84,34 @@ export const lint: NonNullable<UserConfig['lint']> = {
     correctness: 'error',
     suspicious: 'error',
     perf: 'error',
+    // Beyond Hekireki's three: the pedantic and nursery categories as well, every rule of them an
+    // error unless it is turned off below, with the reason.
+    pedantic: 'error',
+    nursery: 'error',
   },
   // Rules in the correctness / suspicious / perf categories are already errors via
   // `categories` above and are not restated; this list only adds rules from the
   // pedantic / style / restriction / nursery categories, which no category enables.
   rules: {
+    // Size: new code stays small. Blank lines and comments do not count, a long explanation is
+    // welcome. The components that are longer than this came from Hekireki as they are, and have
+    // a ceiling of their own below, at their present length, so they do not grow.
+    'max-lines-per-function': ['error', { max: 100, ...SIZE, IIFEs: true }],
+    'max-lines': ['error', { max: 350, ...SIZE }],
+    'max-dependencies': ['error', { max: 20 }],
+    // --- Pedantic rules that do not fit, and why ----------------------------------------------
+    // Props are declared readonly where they are written; the rule wants every parameter deeply
+    // readonly, which React's events, Monaco's editor and the DOM's nodes are not and cannot be.
+    'typescript/prefer-readonly-parameter-types': 'off',
+    // The types say what a function takes and returns; JSDoc says why, in prose, not in tags that
+    // repeat the types.
+    'jsdoc/require-param': 'off',
+    'jsdoc/require-returns': 'off',
+    'jsdoc/require-param-type': 'off',
+    'jsdoc/require-returns-type': 'off',
+    // An effect that returns its cleanup in one branch returns `undefined` in the other:
+    // consistent-return asks for it, and this rule would take it away again.
+    'unicorn/no-useless-undefined': 'off',
     // Doc comments. The `jsdoc` plugin is off by default and enables nothing on its own, so
     // every rule is named here. Doc comments in this package are TSDoc: the type lives in the
     // signature, never in the comment, which is why `require-param-type`, `require-returns-type`
@@ -414,6 +481,7 @@ export const lint: NonNullable<UserConfig['lint']> = {
     'unicorn/filename-case': 'error',
   },
   overrides: [
+    ...Object.entries(CEILINGS).map(([file, ceiling]) => ceilingOverride(file, ceiling)),
     {
       // Playwright's tests: Node, with the page's globals in the callbacks they hand the page.
       // The unit-test rules (Vitest's) are for src/**/*.test.ts, not for these.
@@ -427,6 +495,8 @@ export const lint: NonNullable<UserConfig['lint']> = {
         'jest/expect-expect': 'off',
         'jest/no-done-callback': 'off',
         'jest/valid-title': 'off',
+        // A teardown waits on what a test changed, and only when it changed something.
+        'jest/no-conditional-in-test': 'off',
       },
     },
     {
@@ -449,6 +519,9 @@ export const lint: NonNullable<UserConfig['lint']> = {
       files: ['src/**/*.test.ts'],
       plugins: ['vitest'],
       rules: {
+        // A table of cases branches on the case (and the jest copy of the rule reads Vitest's tests too).
+        'vitest/no-conditional-in-test': 'off',
+        'jest/no-conditional-in-test': 'off',
         'typescript/no-explicit-any': 'off',
         'typescript/consistent-type-assertions': 'off',
         'typescript/no-unsafe-type-assertion': 'off',
@@ -642,6 +715,18 @@ export const lint: NonNullable<UserConfig['lint']> = {
       files: ['src/**/*.test.ts'],
       rules: {
         'no-restricted-imports': 'off',
+      },
+    },
+    {
+      // Last, so it holds over the Vitest block above. A test is a list of cases: a describe block
+      // is as long as its cases, and a table of cases branches on the case. This file is a list
+      // of rules and their reasons.
+      files: ['src/**/*.test.ts', 'lint.config.ts'],
+      rules: {
+        'max-lines-per-function': 'off',
+        'max-lines': 'off',
+        'jest/no-conditional-in-test': 'off',
+        'vitest/no-conditional-in-test': 'off',
       },
     },
   ],

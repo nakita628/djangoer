@@ -16,6 +16,7 @@ import {
 
 import { useDb } from '../../hooks/index.js'
 import { useUiStore } from '../../lib/index.js'
+import { hasText } from '../../lib/text.js'
 import { PaletteButton } from '../palette/palette.js'
 import { groupByApp } from './groups.js'
 
@@ -193,7 +194,7 @@ export function Sidebar({
           <StatusDot on={connection === 'live'} warn={connection === 'offline'} />
           <span className="truncate">
             {status}
-            {schemaPath ? ` · ${schemaPath}` : ''}
+            {hasText(schemaPath) ? ` · ${schemaPath}` : ''}
           </span>
         </div>
         <div className="flex items-center gap-2">

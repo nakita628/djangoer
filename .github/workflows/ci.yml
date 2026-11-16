@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Lint
+    name: Lint and type-check
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -38,8 +38,8 @@ jobs:
       - run: vp install --frozen-lockfile
       - name: Lint (ruff, import-linter, lint/studio.py, Vite+, actionlint, zizmor)
         run: uv run just lint
-      - name: Type-check the server (pyright)
-        run: uv run pyright
+      - name: Type-check (pyright, tsgo)
+        run: uv run just typecheck
 
   test:
     name: Test (Python ${{ matrix.python }}, Django ${{ matrix.django }})
