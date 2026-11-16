@@ -73,9 +73,11 @@ reads are marked on the diagram, and the rows it returns are typed from the mode
 
 ![A SELECT in the SQL console](https://raw.githubusercontent.com/nakita628/djangoer/refs/heads/main/assets/img/studio-sql.png)
 
-**Read models.py** beside the diagram. Studio follows the file: save it, and the page and the
-diagram show the change a moment later. Save it half-written, and Studio says where it stopped
-loading and waits for the fix.
+**Edit models.py** beside the diagram. Save (Ctrl+S) writes the file, and the diagram follows
+a moment later; so does a save from your own editor. Save it half-written, and Studio says
+where it stopped loading and waits for the fix. With `pip install "djangoer[inference]"` the
+editor completes as you type (`models.Cha` → `CharField`, the fields of what a queryset
+returns), describes a name on hover and underlines syntax errors.
 
 **Read the docs** of every model: its fields, and an example of each ORM operation. _Try it_
 opens the example in the playground, where a read runs as it arrives.

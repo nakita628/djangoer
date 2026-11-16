@@ -1,25 +1,32 @@
 import { Button, Tabs, toast } from '@heroui/react'
 import { Editor } from '@monaco-editor/react'
 import type { OnMount } from '@monaco-editor/react'
+import { useQuery } from '@tanstack/react-query'
+import { parseResponse } from 'hono/client'
 import type { InferResponseType } from 'hono/client'
 import type { editor as MonacoEditor } from 'monaco-editor/editor/editor.api.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { LuCopy, LuRotateCcw, LuSave } from 'react-icons/lu'
 
+import { client as api } from '../../api/index.js'
 import type { client } from '../../api/index.js'
 import { SchemaErrorStatus } from '../../components/schema-error-status.js'
 import { SplitPane } from '../../components/split-pane.js'
 import { useCopy } from '../../hooks/copy.js'
-import { usePutSchemaFiles } from '../../hooks/index.js'
+import { useDebounced } from '../../hooks/debounce.js'
+import { getSchemaKey, usePutSchemaFiles } from '../../hooks/index.js'
 import { useUiStore } from '../../lib/index.js'
 import { problemMessage } from '../../lib/problem.js'
 import { SchemaCanvas } from '../schema/schema-view.js'
 import { EDITOR_OPTIONS, PYTHON_LANGUAGE_ID, setupMonaco, themeName } from './monaco.js'
 import { blockAtLine } from './source-blocks.js'
+import { setupSourceInference } from './source-inference.js'
 
 type Snapshot = InferResponseType<typeof client.schema.$get, 200>
 
 const SPLIT_KEY = 'djangoer-studio:source-split'
+const CHECK_DEBOUNCE_MS = 300
+const MARKER_OWNER = 'djangoer'
 
 // The files are the project's own model files, edited here and written back as they are saved.
 // Python is indented by four spaces.
@@ -27,8 +34,9 @@ const SOURCE_OPTIONS: MonacoEditor.IStandaloneEditorConstructionOptions = {
   ...EDITOR_OPTIONS,
   tabSize: 4,
   insertSpaces: true,
-  quickSuggestions: false,
-  renderValidationDecorations: 'off',
+  // Suggestions, hover and syntax errors come from the server (./source-inference.ts).
+  quickSuggestions: true,
+  renderValidationDecorations: 'on',
 }
 
 /** Puts the cursor on a line and scrolls it near the top of the editor. */
@@ -55,6 +63,7 @@ function SourceEditor({
   readonly onSave: () => void
 }) {
   const monaco = setupMonaco()
+  setupSourceInference()
   const theme = useUiStore((s) => s.theme)
   const mounted = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null)
   const latest = useRef({ onCursorLine, onChange, onSave })
@@ -66,6 +75,38 @@ function SourceEditor({
   useEffect(() => {
     if (mounted.current !== null && revealLine !== null) reveal(mounted.current, revealLine)
   }, [revealLine])
+
+  // Where the syntax breaks, read by the server once per settled edit and drawn under the text.
+  const settled = useDebounced(value, CHECK_DEBOUNCE_MS)
+  const check = useQuery({
+    queryKey: [...getSchemaKey(), '/schema/check', path, settled] as const,
+    queryFn: ({ signal }) =>
+      parseResponse(
+        api.schema.check.$post({ json: { path, content: settled } }, { init: { signal } }),
+      ),
+    placeholderData: (previous) => previous,
+  })
+  const diagnostics = check.data?.diagnostics
+  useEffect(() => {
+    const model = mounted.current?.getModel()
+    if (!model || diagnostics === undefined) return
+    monaco.editor.setModelMarkers(
+      model,
+      MARKER_OWNER,
+      diagnostics.map((diagnostic) => {
+        const start = model.getPositionAt(diagnostic.range.start)
+        const end = model.getPositionAt(diagnostic.range.end)
+        return {
+          severity: monaco.MarkerSeverity.Error,
+          message: diagnostic.message,
+          startLineNumber: start.lineNumber,
+          startColumn: start.column,
+          endLineNumber: end.lineNumber,
+          endColumn: end.column,
+        }
+      }),
+    )
+  }, [diagnostics, monaco])
 
   const onMount: OnMount = (editor) => {
     mounted.current = editor

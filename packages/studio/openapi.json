@@ -104,6 +104,129 @@
         }
       }
     },
+    "/schema/complete": {
+      "post": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Complete Source",
+        "operationId": "completeSchemaSource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcePositionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientCompletions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schema/hover": {
+      "post": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Hover Source",
+        "operationId": "hoverSchemaSource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcePositionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientHover"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schema/check": {
+      "post": {
+        "tags": [
+          "schema"
+        ],
+        "summary": "Check Source",
+        "operationId": "checkSchemaSource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientTypeDiagnostics"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request, or what the database made of it, is not valid.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/db": {
       "get": {
         "tags": [
@@ -3408,6 +3531,52 @@
         ],
         "title": "Snapshot",
         "description": "The schema as it was last read, or the reason there is none."
+      },
+      "SourceBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "title": "SourceBody",
+        "description": "A model file as it is being edited."
+      },
+      "SourcePositionBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "content",
+          "offset"
+        ],
+        "title": "SourcePositionBody",
+        "description": "A place in a model file being edited."
       },
       "SqlBody": {
         "properties": {

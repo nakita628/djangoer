@@ -44,6 +44,8 @@ dependencies = [
 [project.optional-dependencies]
 # `djangoer er -o er.png`: the SVG is drawn without it, the PNG is not.
 png = ["resvg-py>=0.2"]
+# Completion, hover and syntax errors while models.py is edited in Studio.
+inference = ["jedi>=0.19"]
 
 [project.urls]
 Repository = "https://github.com/nakita628/djangoer"

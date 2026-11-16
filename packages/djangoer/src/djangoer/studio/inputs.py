@@ -103,3 +103,17 @@ class WriteFile(Input):
     # Studio lists, and no other.
     root: Path
     files: tuple[str, ...]
+
+
+class SourceText(Input):
+    """A model file as it is being edited, which may not be what is on disk."""
+
+    path: str
+    content: str
+    root: Path
+
+
+class SourceAt(SourceText):
+    """A place in a model file being edited."""
+
+    offset: Annotated[Offset, Field(ge=0)]

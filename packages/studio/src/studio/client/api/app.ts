@@ -110,6 +110,23 @@ type ValidationProblem = {
   status?: 422 | undefined
   errors: FieldError[]
 }
+type SourcePositionBody = { path: string; content: string; offset: number }
+type ClientCompletionItem = {
+  label: string
+  kind: string
+  sortText: string
+  insertText: string | null
+}
+type ClientCompletions = { items: ClientCompletionItem[] }
+type TextRange = { start: number; end: number }
+type ClientHover = { contents: string | null; range: TextRange | null }
+type SourceBody = { path: string; content: string }
+type ClientTypeDiagnostic = {
+  message: string
+  severity: 'error' | 'warning' | 'info'
+  range: TextRange
+}
+type ClientTypeDiagnostics = { diagnostics: ClientTypeDiagnostic[] }
 type DbStatus = {
   connected: boolean
   dialect: 'postgresql' | 'mysql' | 'sqlite' | null
@@ -157,7 +174,6 @@ type PlanNode = {
 }
 type Plan = { dialect: 'postgresql' | 'mysql' | 'sqlite'; nodes: PlanNode[]; raw: string }
 type AnalyzeBody = { sql: string }
-type TextRange = { start: number; end: number }
 type NodeColumn = { name: string; dataType: string | null; used: boolean }
 type GraphNode = {
   id: string
@@ -255,23 +271,9 @@ type ClientAnalysis = {
   touched: ClientTouchedModel[]
   diagnostics: ClientDiagnostic[]
 }
-type ClientTypeDiagnostic = {
-  message: string
-  severity: 'error' | 'warning' | 'info'
-  range: TextRange
-}
-type ClientTypeDiagnostics = { diagnostics: ClientTypeDiagnostic[] }
 type ClientPositionBody = { query: string; offset: number }
-type ClientCompletionItem = {
-  label: string
-  kind: string
-  sortText: string
-  insertText: string | null
-}
-type ClientCompletions = { items: ClientCompletionItem[] }
 type ClientCompletionDetailBody = { query: string; offset: number; name: string }
 type ClientCompletionDetail = { detail: string | null; documentation: string | null }
-type ClientHover = { contents: string | null; range: TextRange | null }
 type ClientSignatureParameter = { label: string; documentation: string | null }
 type ClientSignature = {
   label: string
@@ -360,6 +362,54 @@ declare const routes: import('@hono/zod-openapi').OpenAPIHono<
             }
           | {
               input: { json: FileWrite }
+              output: ValidationProblem
+              outputFormat: 'json'
+              status: 422
+            }
+      }
+    } & {
+      '/api/schema/complete': {
+        $post:
+          | {
+              input: { json: SourcePositionBody }
+              output: ClientCompletions
+              outputFormat: 'json'
+              status: 200
+            }
+          | {
+              input: { json: SourcePositionBody }
+              output: ValidationProblem
+              outputFormat: 'json'
+              status: 422
+            }
+      }
+    } & {
+      '/api/schema/hover': {
+        $post:
+          | {
+              input: { json: SourcePositionBody }
+              output: ClientHover
+              outputFormat: 'json'
+              status: 200
+            }
+          | {
+              input: { json: SourcePositionBody }
+              output: ValidationProblem
+              outputFormat: 'json'
+              status: 422
+            }
+      }
+    } & {
+      '/api/schema/check': {
+        $post:
+          | {
+              input: { json: SourceBody }
+              output: ClientTypeDiagnostics
+              outputFormat: 'json'
+              status: 200
+            }
+          | {
+              input: { json: SourceBody }
               output: ValidationProblem
               outputFormat: 'json'
               status: 422

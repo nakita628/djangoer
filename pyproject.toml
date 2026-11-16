@@ -28,6 +28,7 @@ dev = [
   "httpx2>=2.14.0",
   "import-linter>=2.15",
   "pyright>=1.1.400",
+  "jedi>=0.19",
 ]
 
 [tool.pytest.ini_options]

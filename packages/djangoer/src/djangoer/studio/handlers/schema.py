@@ -60,6 +60,54 @@ def write_schema_file(request: Request, state: StudioState, body: contract.FileW
                     assert_never(error)
 
 
+@router.post(
+    "/complete",
+    operation_id="completeSchemaSource",
+    response_model=contract.ClientCompletions,
+    responses=INVALID,
+)
+def complete_source(state: StudioState, body: contract.SourcePositionBody):
+    match SchemaUseCase.complete_source(
+        inputs.SourceAt(path=body.path, content=body.content, offset=body.offset, root=state.root)
+    ):
+        case Success(value):
+            return value
+        case Failure(error):
+            assert_never(error)
+
+
+@router.post(
+    "/hover",
+    operation_id="hoverSchemaSource",
+    response_model=contract.ClientHover,
+    responses=INVALID,
+)
+def hover_source(state: StudioState, body: contract.SourcePositionBody):
+    match SchemaUseCase.hover_source(
+        inputs.SourceAt(path=body.path, content=body.content, offset=body.offset, root=state.root)
+    ):
+        case Success(value):
+            return value
+        case Failure(error):
+            assert_never(error)
+
+
+@router.post(
+    "/check",
+    operation_id="checkSchemaSource",
+    response_model=contract.ClientTypeDiagnostics,
+    responses=INVALID,
+)
+def check_source(state: StudioState, body: contract.SourceBody):
+    match SchemaUseCase.check_source(
+        inputs.SourceText(path=body.path, content=body.content, root=state.root)
+    ):
+        case Success(value):
+            return value
+        case Failure(error):
+            assert_never(error)
+
+
 # Not in the OpenAPI document: a stream is read with EventSource, not with a generated hook.
 @router.get("/events", include_in_schema=False)
 async def read_schema_events(state: StudioState):

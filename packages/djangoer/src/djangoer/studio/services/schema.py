@@ -8,10 +8,10 @@ import time
 from returns.result import Success
 
 from .. import contract, inputs
-from ..domain import files
+from ..domain import files, source
 from ..errors import FileWriteError, UnknownFileError
 from ..state import State
-from .effect import effect
+from .effect import effect, reading
 
 
 def read(input: State):
@@ -26,6 +26,18 @@ def write(input: inputs.WriteFile):
     return effect(
         contract.SchemaFile, (UnknownFileError, FileWriteError), lambda: files.write(input)
     )
+
+
+def complete(input: inputs.SourceAt):
+    return reading(contract.ClientCompletions, lambda: source.complete(input))
+
+
+def hover(input: inputs.SourceAt):
+    return reading(contract.ClientHover, lambda: source.hover(input))
+
+
+def check(input: inputs.SourceText):
+    return reading(contract.ClientTypeDiagnostics, lambda: source.check(input))
 
 
 EVENT_PING_SECONDS = 15

@@ -208,6 +208,162 @@ export function usePutSchemaFiles<TError = DefaultError, TOnMutateResult = unkno
   )
 }
 
+export function getPostSchemaCompleteMutationKey() {
+  return ['schema', '/schema/complete', 'POST'] as const
+}
+
+export function getPostSchemaCompleteMutationOptions<
+  TError = DefaultError,
+  TOnMutateResult = unknown,
+>(options?: ClientRequestOptions) {
+  return mutationOptions<
+    Awaited<
+      ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.complete.$post>>>>
+    >,
+    TError,
+    InferRequestType<typeof client.schema.complete.$post>,
+    TOnMutateResult
+  >({
+    mutationKey: getPostSchemaCompleteMutationKey(),
+    async mutationFn(args: InferRequestType<typeof client.schema.complete.$post>) {
+      return parseResponse(client.schema.complete.$post(args, options))
+    },
+  })
+}
+
+export function usePostSchemaComplete<TError = DefaultError, TOnMutateResult = unknown>(
+  options?: {
+    mutation?: Omit<
+      UseMutationOptions<
+        Awaited<
+          ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.complete.$post>>>>
+        >,
+        TError,
+        InferRequestType<typeof client.schema.complete.$post>,
+        TOnMutateResult
+      >,
+      'mutationFn'
+    >
+    options?: ClientRequestOptions
+  },
+  queryClient?: QueryClient,
+) {
+  const { mutation: mutationOptions, options: clientOptions } = options ?? {}
+  const mutationDefaults = getPostSchemaCompleteMutationOptions<TError, TOnMutateResult>(
+    clientOptions,
+  )
+  return useMutation(
+    {
+      ...mutationOptions,
+      ...mutationDefaults,
+      mutationKey: mutationOptions?.mutationKey ?? mutationDefaults.mutationKey,
+    },
+    queryClient,
+  )
+}
+
+export function getPostSchemaHoverMutationKey() {
+  return ['schema', '/schema/hover', 'POST'] as const
+}
+
+export function getPostSchemaHoverMutationOptions<TError = DefaultError, TOnMutateResult = unknown>(
+  options?: ClientRequestOptions,
+) {
+  return mutationOptions<
+    Awaited<
+      ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.hover.$post>>>>
+    >,
+    TError,
+    InferRequestType<typeof client.schema.hover.$post>,
+    TOnMutateResult
+  >({
+    mutationKey: getPostSchemaHoverMutationKey(),
+    async mutationFn(args: InferRequestType<typeof client.schema.hover.$post>) {
+      return parseResponse(client.schema.hover.$post(args, options))
+    },
+  })
+}
+
+export function usePostSchemaHover<TError = DefaultError, TOnMutateResult = unknown>(
+  options?: {
+    mutation?: Omit<
+      UseMutationOptions<
+        Awaited<
+          ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.hover.$post>>>>
+        >,
+        TError,
+        InferRequestType<typeof client.schema.hover.$post>,
+        TOnMutateResult
+      >,
+      'mutationFn'
+    >
+    options?: ClientRequestOptions
+  },
+  queryClient?: QueryClient,
+) {
+  const { mutation: mutationOptions, options: clientOptions } = options ?? {}
+  const mutationDefaults = getPostSchemaHoverMutationOptions<TError, TOnMutateResult>(clientOptions)
+  return useMutation(
+    {
+      ...mutationOptions,
+      ...mutationDefaults,
+      mutationKey: mutationOptions?.mutationKey ?? mutationDefaults.mutationKey,
+    },
+    queryClient,
+  )
+}
+
+export function getPostSchemaCheckMutationKey() {
+  return ['schema', '/schema/check', 'POST'] as const
+}
+
+export function getPostSchemaCheckMutationOptions<TError = DefaultError, TOnMutateResult = unknown>(
+  options?: ClientRequestOptions,
+) {
+  return mutationOptions<
+    Awaited<
+      ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.check.$post>>>>
+    >,
+    TError,
+    InferRequestType<typeof client.schema.check.$post>,
+    TOnMutateResult
+  >({
+    mutationKey: getPostSchemaCheckMutationKey(),
+    async mutationFn(args: InferRequestType<typeof client.schema.check.$post>) {
+      return parseResponse(client.schema.check.$post(args, options))
+    },
+  })
+}
+
+export function usePostSchemaCheck<TError = DefaultError, TOnMutateResult = unknown>(
+  options?: {
+    mutation?: Omit<
+      UseMutationOptions<
+        Awaited<
+          ReturnType<typeof parseResponse<Awaited<ReturnType<typeof client.schema.check.$post>>>>
+        >,
+        TError,
+        InferRequestType<typeof client.schema.check.$post>,
+        TOnMutateResult
+      >,
+      'mutationFn'
+    >
+    options?: ClientRequestOptions
+  },
+  queryClient?: QueryClient,
+) {
+  const { mutation: mutationOptions, options: clientOptions } = options ?? {}
+  const mutationDefaults = getPostSchemaCheckMutationOptions<TError, TOnMutateResult>(clientOptions)
+  return useMutation(
+    {
+      ...mutationOptions,
+      ...mutationDefaults,
+      mutationKey: mutationOptions?.mutationKey ?? mutationDefaults.mutationKey,
+    },
+    queryClient,
+  )
+}
+
 export function getDbQueryKey() {
   return ['db', '/db'] as const
 }

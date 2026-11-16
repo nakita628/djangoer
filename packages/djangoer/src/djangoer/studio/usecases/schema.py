@@ -27,3 +27,18 @@ def write_schema_file(input: inputs.WriteFile):
     """Write a model file back as it was edited. The server starts again when the file
     changes, so the schema that follows is read from what was written."""
     return SchemaService.write(input)
+
+
+def complete_source(input: inputs.SourceAt):
+    """What can be typed at a place in a model file."""
+    return SchemaService.complete(input)
+
+
+def hover_source(input: inputs.SourceAt):
+    """What the name at a place in a model file is."""
+    return SchemaService.hover(input)
+
+
+def check_source(input: inputs.SourceText):
+    """Where a model file's syntax breaks, as it is typed."""
+    return SchemaService.check(input)

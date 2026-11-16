@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field as PydanticField
 
+from ..brands import Offset
 from .base import Contract
 
 FieldKind = Literal["scalar", "object", "enum", "unsupported"]
@@ -28,6 +29,19 @@ class FileWrite(Contract):
 
     path: str
     content: str
+
+
+class SourceBody(Contract):
+    """A model file as it is being edited."""
+
+    path: str
+    content: str
+
+
+class SourcePositionBody(SourceBody):
+    """A place in a model file being edited."""
+
+    offset: Annotated[Offset, PydanticField(ge=0)]
 
 
 class Location(Contract):
