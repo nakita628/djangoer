@@ -6,6 +6,7 @@ import sys
 from argparse import Namespace
 from pathlib import Path
 
+import django
 import pytest
 from django.conf import settings
 from django.db import connections
@@ -16,6 +17,11 @@ from djangoer.studio.domain import er, export, markdown, svg
 from djangoer.studio.domain.schema import names
 
 ROOT = Path(__file__).parent
+
+
+def since(major: int, minor: int) -> bool:
+    """Whether the Django under test is this version or a later one."""
+    return django.VERSION[:2] >= (major, minor)
 
 
 def app(label: str):
@@ -68,7 +74,11 @@ def test_an_export_covers_the_projects_own_models_unless_asked_for_all():
         "Gallery",
         "Rating",
         "Article",
+        "HistoricalArticle",
         "annex.Tag",
+        # The models of the modern app, on the Django that has them.
+        *(["Item"] if since(5, 0) else []),
+        *(["OrderLine", "Shipment"] if since(5, 2) else []),
     ]
     everything = export.schema_for("default", ROOT, everything=True)
     assert "User" in [model["name"] for model in everything["models"]]
@@ -564,3 +574,82 @@ def test_docs_keep_what_was_collected_when_an_add_on_connects(postgresql, monkey
     assert 'CREATE INDEX "venue_event_code_7025c133" ON "venue_event"' in sql
     assert "-- Not collected: what is added to these tables needs the database" in sql
     assert "\n-- Event: " in sql
+
+
+def test_a_model_a_package_makes_for_the_project_is_the_projects():
+    own = export.schema_for("default", ROOT, everything=False)
+    history = next(m for m in own["models"] if m["name"] == "HistoricalArticle")
+    # Its class has no `class` statement to open the source at, but it is the project's.
+    assert history["own"] is True
+    assert history["location"] is None
+    assert any(
+        r["from"]["model"] == "Article" and r["to"]["model"] == "HistoricalArticle"
+        for r in own["relations"]
+    )
+    assert "Table venue_historicalarticle {" in er.dbml(own)
+
+
+def modern():
+    return app("modern")
+
+
+@pytest.mark.skipif(not since(5, 2), reason="CompositePrimaryKey is Django 5.2's")
+def test_a_composite_primary_key_and_a_foreign_object_to_it():
+    schema = modern()
+    line = next(m for m in schema["models"] if m["name"] == "OrderLine")
+    assert line["primaryKey"] == ["order_id", "item_id"]
+    text = er.dbml(schema)
+    orderline = table(text, "modern_orderline")
+    assert "    (order_id, item_id) [pk]" in orderline
+    # The key is the index, not `pk` on each column, which would be a key each.
+    assert "  order_id integer [not null]" in orderline
+    assert (
+        "Ref modern_shipment_line_fk: modern_shipment.(order_id, item_id) > "
+        "modern_orderline.(order_id, item_id) [delete: cascade]"
+    ) in text
+    mermaid = er.mermaid(schema)
+    assert "        IntegerField order_id PK\n" in mermaid
+    assert "        ForeignKey item_id PK\n" in mermaid
+    assert (
+        'modern_orderline ||--o{ modern_shipment : "(order_id, item_id) - (order_id, item_id)"'
+    ) in mermaid
+    docs = markdown.render(schema, sql="", diagram=None)
+    assert "| `order_id` | `IntegerField` | `integer` |  | PK |  |  |" in docs
+    assert "| `item_id` | `ForeignKey` | `bigint` |  | PK, FK |  |  |" in docs
+    assert (
+        "- `line` (`order_id`, `item_id`) → [OrderLine](#orderline).(`order_id`, `item_id`), "
+        "on delete cascade"
+    ) in docs
+    assert ("order_id", "IntegerField", "PK") in svg.layout(schema)["OrderLine"].rows
+
+
+@pytest.mark.skipif(not since(5, 0), reason="GeneratedField and db_default are 5.0's")
+def test_generated_columns_database_defaults_and_comments():
+    schema = modern()
+    item = next(m for m in schema["models"] if m["name"] == "Item")
+    fields = {field["name"]: field for field in item["fields"]}
+    assert '"price" + "tax"' in fields["total"]["generated"]
+    # Created without NOT NULL, as Django creates a generated column.
+    assert fields["total"]["isRequired"] is False
+    assert fields["stock"]["dbDefault"] == "0"
+    assert fields["stock"]["default"] is None
+    assert fields["name"]["documentation"] == "The name shown to customers — Shown in lists"
+    assert item["documentation"] == "Things we sell"
+    text = table(er.dbml(schema), "modern_item")
+    assert "  total decimal [note: 'generated: " in text
+    assert "  stock integer [default: 0, not null]" in text
+    assert "  created datetime [default: `(" in text
+    assert (
+        "  name varchar(50) [not null, note: 'The name shown to customers — Shown in lists']"
+    ) in text
+    assert "Note: '''Things we sell'''" in text
+    docs = markdown.render(schema, sql="", diagram=None)
+    assert "| `total` | `GeneratedField` | `decimal` | yes |  | generated: `" in docs
+    assert "| `stock` | `IntegerField` | `integer` |  |  | `0` (database) |  |" in docs
+    assert "\nThings we sell\n" in docs
+
+
+def test_a_python_default_and_a_database_default_are_apart():
+    product = next(m for m in shop()["models"] if m["name"] == "Product")
+    kind = next(f for f in product["fields"] if f["name"] == "kind")
+    assert (kind["default"], kind["dbDefault"], kind["generated"]) == ("'book'", None, None)

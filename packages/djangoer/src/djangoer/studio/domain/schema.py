@@ -99,13 +99,46 @@ def _default(field: models.Field) -> str | None:
     if getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False):
         return "now()"
     if field.default is NOT_PROVIDED:
-        db_default = getattr(field, "db_default", NOT_PROVIDED)
-        return None if db_default is NOT_PROVIDED else f"db_default={_repr(db_default)}"
+        # A default of the database is `dbDefault`, as the SQL it is: not Python's.
+        return None
     if callable(field.default):
         return f"{_repr(field.default)}()"
     if isinstance(field.default, enum.Enum):
         return repr(field.default.value)
     return _repr(field.default)
+
+
+def _compiled(alias: str, build) -> str | None:
+    """SQL Django writes for this database, its parameters in place; None when the backend
+    cannot write it (or the Django is too old to have it)."""
+    try:
+        connection = connections[alias]
+        editor = connection.schema_editor()
+        sql, params = build(connection, editor)
+    except Exception:  # noqa: BLE001 - a backend that cannot compile it offline
+        return None
+    return sql % tuple(editor.quote_value(param) for param in params) if params else sql
+
+
+def _db_default(field: models.Field, alias: str) -> str | None:
+    """`db_default` as the SQL the column is created with: `0`, `(CURRENT_TIMESTAMP)`."""
+    if getattr(field, "db_default", NOT_PROVIDED) is NOT_PROVIDED:
+        return None
+    return _compiled(alias, lambda _connection, editor: editor.db_default_sql(field))
+
+
+def _generated(field: models.Field, alias: str) -> str | None:
+    """The expression of a `GeneratedField`, as the database computes it: `"price" + "tax"`."""
+    if not getattr(field, "generated", False):
+        return None
+    return _compiled(alias, lambda connection, _editor: field.generated_sql(connection))
+
+
+def _comments(*texts: object) -> str | None:
+    """What describes a column or a table, each text once: the comment the database keeps
+    (`db_comment`, `db_table_comment`) first, then the one of the code."""
+    seen = [str(text).strip() for text in texts if text and str(text).strip()]
+    return " — ".join(dict.fromkeys(seen)) or None
 
 
 def _attributes(field: models.Field) -> list[str]:
@@ -183,9 +216,9 @@ def _location(obj: Any, root: Path) -> dict[str, Any] | None:
 def _documentation(model: type[models.Model]) -> str | None:
     doc = inspect.cleandoc(model.__doc__ or "")
     # Django writes `Name(field, field, …)` as the docstring of a model that has none.
-    if not doc or doc.startswith(f"{model.__name__}("):
-        return None
-    return doc
+    if doc.startswith(f"{model.__name__}("):
+        doc = ""
+    return _comments(getattr(model._meta, "db_table_comment", None), doc)
 
 
 def _camel(text: str) -> str:
@@ -234,19 +267,23 @@ def _scalar_field(
     if field.choices:
         kind = "enum"
         type_name = _enum(model, field, owner or model.__name__, enums)
-    documentation = str(field.help_text) if field.help_text else None
+    documentation = _comments(getattr(field, "db_comment", None), field.help_text)
+    generated = _generated(field, alias)
     return {
         "name": field.attname,
         "dbName": field.column if field.column != field.attname else None,
         "kind": kind,
         "type": type_name,
         "isList": False,
-        "isRequired": not field.null,
+        # A generated column is created without NOT NULL, whatever `null` says.
+        "isRequired": not field.null and generated is None,
         "isId": bool(field.primary_key),
         "isUnique": bool(field.unique and not field.primary_key),
         "isUpdatedAt": bool(getattr(field, "auto_now", False)),
         "isForeignKey": bool((field.is_relation and field.many_to_one) or field.one_to_one),
         "default": _default(field),
+        "dbDefault": _db_default(field, alias),
+        "generated": generated,
         "nativeType": _native_type(field, alias),
         "documentation": documentation,
         "annotations": [],
@@ -277,6 +314,8 @@ def _object_field(
         "isUpdatedAt": False,
         "isForeignKey": False,
         "default": None,
+        "dbDefault": None,
+        "generated": None,
         "nativeType": None,
         "documentation": documentation,
         "annotations": [],
@@ -553,6 +592,10 @@ def build_model(
                 )
             )
             continue
+        composite = _composite_relation(field, known)
+        if composite is not None:
+            fields.append(composite)
+            continue
         if not getattr(field, "concrete", False) or getattr(field, "column", None) is None:
             # GenericForeignKey, CompositePrimaryKey: nothing a row carries under that name.
             continue
@@ -585,6 +628,7 @@ def build_model(
         if field["relation"] is not None:
             del field["relation"]["declared"]
     key = _primary_key(model)
+    own = _in_project(_source_file(model), root)
     return {
         "name": known.of(model),
         "app": meta.app_label,
@@ -597,7 +641,11 @@ def build_model(
         "genericForeignKeys": _generic_foreign_keys(model),
         "attributes": _meta_attributes(model),
         # Where the class is written, when it is the project's: the source page opens there.
-        "location": _location(model, root) if _in_project(_source_file(model), root) else None,
+        "location": _location(model, root) if own else None,
+        # The project's own, by the module it is in: a model a package makes for one of the
+        # project's (django-simple-history's `HistoricalArticle`) has no `class` statement to
+        # be found at, but it is in the project's app, its database and its migrations.
+        "own": own,
     }
 
 
@@ -635,6 +683,30 @@ def build_relations(
             if generic is not None:
                 out.append(generic)
                 continue
+            if _composite(field):
+                parent = known.of(field.related_model)
+                if parent is not None:
+                    on_delete = getattr(field.remote_field, "on_delete", None)
+                    target = field.related_model._meta.pk.name
+                    # Each end names the field that stands for its columns: the composite key
+                    # (`pk`), and the ForeignObject (`line`), which says which columns it reads.
+                    out.append(
+                        {
+                            "id": f"{parent}.{target}->{child}.{field.name}",
+                            "name": _relation_name(field),
+                            "origin": "inferred",
+                            "from": {
+                                "model": parent,
+                                "field": target,
+                                "cardinality": "zero-one" if field.null else "one",
+                            },
+                            "to": {"model": child, "field": field.name, "cardinality": "zero-many"},
+                            "onDelete": getattr(on_delete, "__name__", None),
+                            "onUpdate": None,
+                            "through": None,
+                        }
+                    )
+                continue
             if not (field.is_relation and (field.many_to_one or field.one_to_one)):
                 continue
             if getattr(field, "column", None) is None:
@@ -665,6 +737,43 @@ def build_relations(
                 }
             )
     return out
+
+
+def _composite(field: Any) -> bool:
+    """A `ForeignObject` of several columns, the way to refer to a composite primary key: a
+    relation with no column of its own, its columns are other fields of the model."""
+    return (
+        isinstance(field, models.ForeignObject)
+        and getattr(field, "column", None) is None
+        and field.many_to_one
+        and len(field.local_related_fields) > 0
+    )
+
+
+def _composite_relation(field: Any, known: Names) -> dict[str, Any] | None:
+    """The object field of a `ForeignObject`: what it reads (`order_id`, `item_id`) and what
+    that is on the other model."""
+    if not _composite(field):
+        return None
+    target = known.of(field.related_model)
+    if target is None:
+        return None
+    on_delete = getattr(field.remote_field, "on_delete", None)
+    return _object_field(
+        field.name,
+        target,
+        is_list=False,
+        required=not field.null,
+        relation={
+            "declared": True,
+            "name": _relation_name(field),
+            "fromFields": [column.attname for column in field.local_related_fields],
+            "toFields": [column.attname for column in field.foreign_related_fields],
+            "onDelete": getattr(on_delete, "__name__", None),
+            "onUpdate": None,
+        },
+        attributes=_attributes(field),
+    )
 
 
 def _generic_foreign_keys(model: type[models.Model]) -> list[dict[str, str]]:

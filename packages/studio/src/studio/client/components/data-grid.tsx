@@ -38,6 +38,7 @@ type Field = {
   readonly isId: boolean
   readonly isForeignKey: boolean
   readonly default: string | null
+  readonly dbDefault?: string | null
   readonly documentation: string | null
 }
 
@@ -180,6 +181,8 @@ function NewRowCells({
 }) {
   return fields.map((field) => {
     const options = optionsFor(schema, field)
+    // What a cell left blank gets: Python's default, else the database's (`db_default`).
+    const fallback = field.default ?? field.dbDefault ?? null
     return (
       <Table.Cell key={field.name}>
         {options ? (
@@ -194,9 +197,7 @@ function NewRowCells({
               onDraftChange({ ...draft, [field.name]: event.target.value })
             }}
           >
-            <option value="">
-              {field.default === null ? 'NULL' : `default (${field.default})`}
-            </option>
+            <option value="">{fallback === null ? 'NULL' : `default (${fallback})`}</option>
             {options.map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -208,11 +209,7 @@ function NewRowCells({
             className="cell-input"
             aria-label={field.name}
             placeholder={
-              field.default === null
-                ? field.isRequired
-                  ? 'required'
-                  : 'NULL'
-                : `default: ${field.default}`
+              fallback === null ? (field.isRequired ? 'required' : 'NULL') : `default: ${fallback}`
             }
             value={draft[field.name] ?? ''}
             onChange={(event) => {

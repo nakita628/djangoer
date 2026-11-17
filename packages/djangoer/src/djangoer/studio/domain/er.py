@@ -29,13 +29,13 @@ DBML_ACTIONS = {
 def scoped(schema: dict[str, Any], *, everything: bool) -> dict[str, Any]:
     """The schema an export covers: the project's own models, or every model with `everything`.
 
-    A model of an installed package (django.contrib.auth) has no source in the project, which
-    is how it is told apart. A relation to a model left out is left out with it, and so is an
-    enum no remaining field uses.
+    A model of an installed package (django.contrib.auth) is not in the project's directory,
+    which is how it is told apart (`own`). A relation to a model left out is left out with it,
+    and so is an enum no remaining field uses.
     """
     if everything:
         return schema
-    models = [model for model in schema["models"] if model["location"] is not None]
+    models = [model for model in schema["models"] if model["own"]]
     kept = {model["name"] for model in models}
     used = {
         field["type"] for model in models for field in model["fields"] if field["kind"] == "enum"
@@ -59,6 +59,32 @@ def columns(model: dict[str, Any]) -> list[dict[str, Any]]:
 
 def column_name(field: dict[str, Any]) -> str:
     return field["dbName"] or field["name"]
+
+
+def is_key(model: dict[str, Any], field: dict[str, Any]) -> bool:
+    """Whether a column is the primary key, or one of the columns of a composite one."""
+    return field["isId"] or field["name"] in (model["primaryKey"] or [])
+
+
+def relation_columns(
+    tables: dict[str, dict[str, Any]], relation: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    """The columns of each end of a relation, the referred one's first. A foreign key has one
+    at each end; a `ForeignObject` to a composite key names the columns it reads in its
+    relation (`order_id`, `item_id` → the same on the other model)."""
+    parent = tables[relation["from"]["model"]]
+    child = tables[relation["to"]["model"]]
+    for field in child["fields"]:
+        found = field["relation"]
+        if field["name"] == relation["to"]["field"] and found and len(found["fromFields"]) > 1:
+            return (
+                [_column_of(parent, name) for name in found["toFields"]],
+                [_column_of(child, name) for name in found["fromFields"]],
+            )
+    return (
+        [_column_of(parent, relation["from"]["field"])],
+        [_column_of(child, relation["to"]["field"])],
+    )
 
 
 def _tables(schema: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -92,10 +118,8 @@ def mermaid(schema: dict[str, Any]) -> str:
         many_to_many = relation["origin"] == "implicit-many-to-many"
         left = "}o" if many_to_many else PARENT_END[relation["from"]["cardinality"]]
         right = "o{" if many_to_many else CHILD_END[relation["to"]["cardinality"]]
-        label = (
-            f"({_column_of(parent, relation['from']['field'])}) - "
-            f"({_column_of(child, relation['to']['field'])})"
-        )
+        referred, referring = relation_columns(tables, relation)
+        label = f"({', '.join(referred)}) - ({', '.join(referring)})"
         # Dotted: nothing in the database backs a generic relation.
         line = ".." if relation["origin"] == "generic" else "--"
         lines.append(
@@ -105,7 +129,7 @@ def mermaid(schema: dict[str, Any]) -> str:
     for model in schema["models"]:
         lines.append(f"    {_identifier(model['dbName'])} {{")
         for field in columns(model):
-            key = "PK" if field["isId"] else "FK" if field["isForeignKey"] else ""
+            key = "PK" if is_key(model, field) else "FK" if field["isForeignKey"] else ""
             key = f"{key}, UK".strip(", ") if field["isUnique"] else key
             note = f' "{_quoted(field["documentation"])}"' if field["documentation"] else ""
             parts = [_identifier(field["type"]), _identifier(column_name(field)), key]
@@ -199,6 +223,17 @@ def _dbml_through(relation: dict[str, Any], tables: dict[str, dict[str, Any]]) -
 
 
 def _dbml_default(field: dict[str, Any]) -> str | None:
+    """The default of a column: the database's own (`db_default`, as SQL) first, else the one
+    Python gives a new row."""
+    db_default = field["dbDefault"]
+    if db_default is not None:
+        if re.fullmatch(r"-?\d+(\.\d+)?", db_default):
+            return db_default
+        if db_default.upper() in ("TRUE", "FALSE"):
+            return db_default.lower()
+        if re.fullmatch(r"'(?:[^']|'')*'", db_default):
+            return _dbml_string(db_default[1:-1].replace("''", "'"))
+        return f"`{db_default}`"
     default = field["default"]
     if default is None or default == "autoincrement()":
         return None
@@ -230,7 +265,8 @@ def _dbml_settings(field: dict[str, Any], note: str | None = None) -> str:
         settings.append(f"default: {default}")
     if field["isRequired"] and not field["isId"]:
         settings.append("not null")
-    notes = [text for text in (field["documentation"], note) if text]
+    generated = f"generated: {field['generated']}" if field["generated"] else None
+    notes = [text for text in (field["documentation"], generated, note) if text]
     if notes:
         settings.append(f"note: {_dbml_string('. '.join(notes))}")
     return f" [{', '.join(settings)}]" if settings else ""
@@ -272,8 +308,12 @@ def dbml(schema: dict[str, Any]) -> str:
             _dbml_column(field, generic.get((model["name"], field["name"])))
             for field in columns(model)
         ]
-        if model["indexes"]:
+        composite = model["primaryKey"] or []
+        if model["indexes"] or composite:
             lines += ["", "  indexes {"]
+            if composite:
+                # A key of several columns is an index in DBML, `pk` on each would be one each.
+                lines.append(f"    ({', '.join(_column_of(model, c) for c in composite)}) [pk]")
             lines += [_dbml_index(model, index) for index in model["indexes"]]
             lines.append("  }")
         if model["documentation"]:
@@ -290,15 +330,21 @@ def dbml(schema: dict[str, Any]) -> str:
         if relation["origin"] == "generic":
             # No foreign key backs it, and a Ref would read as one: the column's note says it.
             continue
-        column = _column_of(child, relation["to"]["field"])
+        referred, referring = relation_columns(tables, relation)
         arrow = "-" if relation["to"]["cardinality"] == "zero-one" else ">"
         action = DBML_ACTIONS.get(relation["onDelete"] or "")
         settings = f" [delete: {action}]" if action else ""
+        name = relation["to"]["field"] if len(referring) > 1 else referring[0]
         blocks.append(
-            f"Ref {child['dbName']}_{column}_fk: {child['dbName']}.{column} {arrow} "
-            f"{parent['dbName']}.{_column_of(parent, relation['from']['field'])}{settings}"
+            f"Ref {child['dbName']}_{name}_fk: {child['dbName']}.{_dbml_columns(referring)} "
+            f"{arrow} {parent['dbName']}.{_dbml_columns(referred)}{settings}"
         )
     return "\n\n".join(blocks) + "\n"
+
+
+def _dbml_columns(names: list[str]) -> str:
+    """One column, or several in parentheses: `(order_id, item_id)`."""
+    return names[0] if len(names) == 1 else f"({', '.join(names)})"
 
 
 def _key(model: dict[str, Any]) -> str:

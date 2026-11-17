@@ -2535,6 +2535,28 @@
             ],
             "title": "Default"
           },
+          "dbDefault": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dbdefault"
+          },
+          "generated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated"
+          },
           "nativeType": {
             "anyOf": [
               {
@@ -2596,6 +2618,8 @@
           "isUpdatedAt",
           "isForeignKey",
           "default",
+          "dbDefault",
+          "generated",
           "nativeType",
           "documentation",
           "annotations",
@@ -3129,6 +3153,10 @@
                 "type": "null"
               }
             ]
+          },
+          "own": {
+            "type": "boolean",
+            "title": "Own"
           }
         },
         "additionalProperties": false,
@@ -3144,7 +3172,8 @@
           "indexes",
           "genericForeignKeys",
           "attributes",
-          "location"
+          "location",
+          "own"
         ],
         "title": "Model"
       },

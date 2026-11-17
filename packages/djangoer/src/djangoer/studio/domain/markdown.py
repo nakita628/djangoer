@@ -7,7 +7,7 @@ from typing import Any
 
 from django.db import DatabaseError, connections
 
-from .er import MERMAID_LIMIT, column_name, columns, mermaid
+from .er import MERMAID_LIMIT, column_name, columns, is_key, mermaid, relation_columns
 from .schema import Names
 
 ACTIONS = {"CASCADE": "cascade", "SET_NULL": "set null", "PROTECT": "protect"}
@@ -60,9 +60,9 @@ def _code(text: str | None) -> str:
     return f"`{_cell(text)}`" if text else ""
 
 
-def _keys(field: dict[str, Any]) -> str:
+def _keys(model: dict[str, Any], field: dict[str, Any]) -> str:
     marks = []
-    if field["isId"]:
+    if is_key(model, field):
         marks.append("PK")
     if field["isForeignKey"]:
         marks.append("FK")
@@ -141,6 +141,19 @@ def _relations(model: dict[str, Any], schema: dict[str, Any], links: dict[str, s
             continue
         action = ACTIONS.get(relation["onDelete"] or "", (relation["onDelete"] or "").lower())
         deletes = f", on delete {action}" if action else ""
+        referred, referring = relation_columns(tables, relation)
+        if len(referring) > 1:
+            # A ForeignObject to a composite key: the columns it reads, and theirs.
+            mine, theirs = _columns(referring), _columns(referred)
+            if child["model"] == model["name"]:
+                lines.append(
+                    f"- `{child['field']}` {mine} → {link(parent['model'])}.{theirs}{deletes}"
+                )
+            if parent["model"] == model["name"]:
+                lines.append(
+                    f"- {link(child['model'])}.`{child['field']}` {mine} → {theirs}{deletes}"
+                )
+            continue
         if child["model"] == model["name"]:
             target = tables[parent["model"]]
             lines.append(
@@ -152,6 +165,10 @@ def _relations(model: dict[str, Any], schema: dict[str, Any], links: dict[str, s
                 f"- {link(child['model'])}.`{child['field']}` → `{parent['field']}`{deletes}"
             )
     return lines
+
+
+def _columns(names: list[str]) -> str:
+    return "(" + ", ".join(f"`{name}`" for name in names) + ")"
 
 
 def _key_name(model: dict[str, Any], name: str) -> str:
@@ -167,6 +184,16 @@ def _index(index: dict[str, Any]) -> str:
     opclasses = ", ".join(_code(opclass) for opclass in index["opclasses"])
     using = f" ({opclasses})" if opclasses else ""
     return f"- {kind}{name} on {', '.join(_code(key) for key in keys)}{using}{where}"
+
+
+def _default(field: dict[str, Any]) -> str:
+    """The Default cell: what Python gives a new row, the database's own default (as the SQL
+    the column is created with), or the expression a generated column is computed from."""
+    if field["generated"]:
+        return f"generated: {_code(field['generated'])}"
+    if field["dbDefault"]:
+        return f"{_code(field['dbDefault'])} (database)"
+    return _code(field["default"])
 
 
 def _model(model: dict[str, Any], schema: dict[str, Any], links: dict[str, str]) -> list[str]:
@@ -187,8 +214,8 @@ def _model(model: dict[str, Any], schema: dict[str, Any], links: dict[str, str])
                     _code(field["type"]),
                     _code(field["nativeType"]),
                     "" if field["isRequired"] else "yes",
-                    _keys(field),
-                    _code(field["default"]),
+                    _keys(model, field),
+                    _default(field),
                     _cell(field["documentation"]),
                 ]
             )

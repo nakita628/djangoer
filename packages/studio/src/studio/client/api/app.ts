@@ -23,6 +23,8 @@ type Field = {
   isUpdatedAt: boolean
   isForeignKey: boolean
   default: string | null
+  dbDefault: string | null
+  generated: string | null
   nativeType: string | null
   documentation: string | null
   annotations: string[]
@@ -53,6 +55,7 @@ type Model = {
   genericForeignKeys: GenericForeignKey[]
   attributes: string[]
   location: Location | null
+  own: boolean
 }
 type EnumValue = { name: string; dbName: string | null }
 type Enum = {

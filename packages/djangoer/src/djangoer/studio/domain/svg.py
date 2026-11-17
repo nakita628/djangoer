@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from html import escape
 from typing import Any
 
-from .er import column_name, columns
+from .er import column_name, columns, is_key
 
 # The narrowest a card is; it widens to its longest line, up to the widest.
 NODE_WIDTH = 340
@@ -130,7 +130,7 @@ def _cards(schema: dict[str, Any], enum_rows: int | None) -> dict[str, Card]:
             (
                 column_name(field),
                 field["type"] + ("" if field["isRequired"] else "?"),
-                "PK" if field["isId"] else "FK" if field["isForeignKey"] else "",
+                "PK" if is_key(model, field) else "FK" if field["isForeignKey"] else "",
             )
             for field in columns(model)
         ]

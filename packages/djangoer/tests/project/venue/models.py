@@ -142,3 +142,20 @@ class Article(models.Model):
 
     class Meta:
         app_label = "venue"
+
+
+# As django-simple-history makes `HistoricalArticle`: a model built with type(), whose source
+# no `class` statement holds.
+HistoricalArticle = type(
+    "HistoricalArticle",
+    (models.Model,),
+    {
+        "__module__": __name__,
+        "history_id": models.AutoField(primary_key=True),
+        "article": models.ForeignKey(
+            Article, on_delete=models.DO_NOTHING, db_constraint=False, related_name="+"
+        ),
+        "history_date": models.DateTimeField(),
+        "Meta": type("Meta", (), {"app_label": "venue"}),
+    },
+)

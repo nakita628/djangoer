@@ -70,7 +70,11 @@ class Field(Contract):
     is_unique: bool
     is_updated_at: bool
     is_foreign_key: bool
+    # The default Python gives a new row; `db_default` is the one of the database, as SQL.
     default: str | None
+    db_default: str | None
+    # The expression of a generated column, as SQL: `"price" + "tax"`.
+    generated: str | None
     native_type: str | None
     documentation: str | None
     annotations: list[str]
@@ -113,6 +117,8 @@ class Model(Contract):
     generic_foreign_keys: list[GenericForeignKey]
     attributes: list[str]
     location: Location | None
+    # The project's own model, not an installed package's: in the project's directory.
+    own: bool
 
 
 class EnumValue(Contract):
