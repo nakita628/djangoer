@@ -1,3 +1,5 @@
+# Django gives every model class `_meta` as it is created, which no annotation says:
+# pyright: reportAttributeAccessIssue=false
 import os
 import subprocess
 import sys
@@ -203,13 +205,22 @@ def test_dbml_writes_a_many_to_many_as_its_table():
     assert "Table venue_event_excluded {" in text
 
 
+def where(alias: str = "default") -> str:
+    """The condition of `one_primary_event` as this Django writes it for the database: on
+    SQLite `"primary"` before 6.1, `"primary" = 1` from it."""
+    from project.venue.models import Event
+
+    constraint = next(c for c in Event._meta.constraints if c.name == "one_primary_event")
+    return constraint._get_condition_sql(Event, connections[alias].schema_editor())
+
+
 def test_indexes_are_the_ones_the_database_has():
     event = next(model for model in venue()["models"] if model["name"] == "Event")
     by_name = {index["name"]: index for index in event["indexes"]}
     # A foreign key and a db_index=True column are indexed on their own, by Django's names.
     assert by_name["venue_event_organizer_id_17d987d6"]["fields"] == ["organizer_id"]
     assert by_name["venue_event_code_7025c133"]["attribute"] == "code: db_index=True"
-    assert by_name["one_primary_event"]["condition"] == '"primary" = 1'
+    assert by_name["one_primary_event"]["condition"] == where()
     assert by_name["event_code_lower_unique"]["expressions"] == ['LOWER("code")']
     assert by_name["event_email_lower"] == {
         "type": "normal",
@@ -227,7 +238,7 @@ def test_indexes_are_the_ones_the_database_has():
     text = table(er.dbml(venue()), "venue_event")
     assert "    (code) [name: 'venue_event_code_7025c133']" in text
     assert (
-        "    (owner_id, primary) [unique, name: 'one_primary_event', note: 'where \"primary\" = 1']"
+        f"    (owner_id, primary) [unique, name: 'one_primary_event', note: 'where {where()}']"
     ) in text
     assert "    (`LOWER(\"email\")`) [name: 'event_email_lower']" in text
 
@@ -235,13 +246,13 @@ def test_indexes_are_the_ones_the_database_has():
 def test_docs_list_every_index_and_the_sql_creates_them():
     text = export.render_docs("default", venue())["README.md"].decode()
     assert "- index `venue_event_code_7025c133` on `code`" in text
-    assert '- unique `one_primary_event` on `owner_id`, `primary` where `"primary" = 1`' in text
+    assert f"- unique `one_primary_event` on `owner_id`, `primary` where `{where()}`" in text
     assert '- index `event_email_lower` on `LOWER("email")`' in text
     # The indexes are collected as the schema editor closes, after the tables.
     assert 'CREATE INDEX "venue_event_code_7025c133" ON "venue_event" ("code");' in text
     assert (
         'CREATE UNIQUE INDEX "one_primary_event" ON "venue_event" ("owner_id", "primary") '
-        'WHERE "primary" = 1;'
+        f"WHERE {where()};"
     ) in text
 
 
@@ -331,7 +342,7 @@ def test_indexes_on_postgresql_have_the_like_index_of_a_text_column(postgresql):
     assert like["opclasses"] == ["varchar_pattern_ops"]
     assert like["attribute"] == "code: varchar_pattern_ops for LIKE"
     by_name = {index["name"]: index for index in event["indexes"]}
-    assert by_name["one_primary_event"]["condition"] == '"primary"'
+    assert by_name["one_primary_event"]["condition"] == where(postgresql)
     assert "    (code) [name: 'venue_event_code_7025c133_like', note: 'varchar_pattern_ops']" in (
         er.dbml(schema)
     )
