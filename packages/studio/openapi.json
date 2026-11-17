@@ -3,7 +3,7 @@
   "info": {
     "title": "Djangoer Studio",
     "description": "The API behind Djangoer Studio: the schema, the database, the Django ORM playground and the docs.",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "servers": [
     {
