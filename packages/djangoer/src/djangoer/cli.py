@@ -158,6 +158,12 @@ def add_export_arguments(parser: argparse.ArgumentParser) -> None:
         metavar="N",
         help="how many values an enum shows in the SVG and PNG diagram, 0 for all (default: 12)",
     )
+    parser.add_argument(
+        "--no-enums",
+        dest="enums",
+        action="store_false",
+        help="leave the enums out of the SVG and PNG diagram (the docs list every value)",
+    )
 
 
 def _count(text: str) -> int:
@@ -207,7 +213,10 @@ def write_er(options: argparse.Namespace) -> int:
     failed = False
     for output in options.output:
         target = Path(output)
-        match export.render_er(schema, target.suffix, enum_rows=enum_rows(options)):
+        rendered = export.render_er(
+            schema, target.suffix, enum_rows=enum_rows(options), enums=options.enums
+        )
+        match rendered:
             case Success(content):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
@@ -236,7 +245,9 @@ def write_docs(options: argparse.Namespace) -> int:
     schema = export.schema_for(options.database, Path.cwd(), everything=options.all)
     directory = Path(options.output)
     directory.mkdir(parents=True, exist_ok=True)
-    files = export.render_docs(options.database, schema, enum_rows=enum_rows(options))
+    files = export.render_docs(
+        options.database, schema, enum_rows=enum_rows(options), enums=options.enums
+    )
     for name, content in files.items():
         (directory / name).write_bytes(content)
         _print(f"wrote {directory / name}")

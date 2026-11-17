@@ -29,13 +29,13 @@ DBML_ACTIONS = {
 def scoped(schema: dict[str, Any], *, everything: bool) -> dict[str, Any]:
     """The schema an export covers: the project's own models, or every model with `everything`.
 
-    A model of an installed package (django.contrib.auth) has no source in the project, which
-    is how it is told apart. A relation to a model left out is left out with it, and so is an
-    enum no remaining field uses.
+    A model of an installed package (django.contrib.auth) is not in the project's directory,
+    which is how it is told apart (`own`). A relation to a model left out is left out with it,
+    and so is an enum no remaining field uses.
     """
     if everything:
         return schema
-    models = [model for model in schema["models"] if model["location"] is not None]
+    models = [model for model in schema["models"] if model["own"]]
     kept = {model["name"] for model in models}
     used = {
         field["type"] for model in models for field in model["fields"] if field["kind"] == "enum"
@@ -59,6 +59,32 @@ def columns(model: dict[str, Any]) -> list[dict[str, Any]]:
 
 def column_name(field: dict[str, Any]) -> str:
     return field["dbName"] or field["name"]
+
+
+def is_key(model: dict[str, Any], field: dict[str, Any]) -> bool:
+    """Whether a column is the primary key, or one of the columns of a composite one."""
+    return field["isId"] or field["name"] in (model["primaryKey"] or [])
+
+
+def relation_columns(
+    tables: dict[str, dict[str, Any]], relation: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    """The columns of each end of a relation, the referred one's first. A foreign key has one
+    at each end; a `ForeignObject` to a composite key names the columns it reads in its
+    relation (`order_id`, `item_id` → the same on the other model)."""
+    parent = tables[relation["from"]["model"]]
+    child = tables[relation["to"]["model"]]
+    for field in child["fields"]:
+        found = field["relation"]
+        if field["name"] == relation["to"]["field"] and found and len(found["fromFields"]) > 1:
+            return (
+                [_column_of(parent, name) for name in found["toFields"]],
+                [_column_of(child, name) for name in found["fromFields"]],
+            )
+    return (
+        [_column_of(parent, relation["from"]["field"])],
+        [_column_of(child, relation["to"]["field"])],
+    )
 
 
 def _tables(schema: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -92,18 +118,18 @@ def mermaid(schema: dict[str, Any]) -> str:
         many_to_many = relation["origin"] == "implicit-many-to-many"
         left = "}o" if many_to_many else PARENT_END[relation["from"]["cardinality"]]
         right = "o{" if many_to_many else CHILD_END[relation["to"]["cardinality"]]
-        label = (
-            f"({_column_of(parent, relation['from']['field'])}) - "
-            f"({_column_of(child, relation['to']['field'])})"
-        )
+        referred, referring = relation_columns(tables, relation)
+        label = f"({', '.join(referred)}) - ({', '.join(referring)})"
+        # Dotted: nothing in the database backs a generic relation.
+        line = ".." if relation["origin"] == "generic" else "--"
         lines.append(
-            f"    {_identifier(parent['dbName'])} {left}--{right} "
+            f"    {_identifier(parent['dbName'])} {left}{line}{right} "
             f'{_identifier(child["dbName"])} : "{label}"'
         )
     for model in schema["models"]:
         lines.append(f"    {_identifier(model['dbName'])} {{")
         for field in columns(model):
-            key = "PK" if field["isId"] else "FK" if field["isForeignKey"] else ""
+            key = "PK" if is_key(model, field) else "FK" if field["isForeignKey"] else ""
             key = f"{key}, UK".strip(", ") if field["isUnique"] else key
             note = f' "{_quoted(field["documentation"])}"' if field["documentation"] else ""
             parts = [_identifier(field["type"]), _identifier(column_name(field)), key]
@@ -133,13 +159,27 @@ def _dbml_quoted(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _dbml_enum_value(value: dict[str, Any]) -> str:
-    """A value of an enum, as it is stored. DBML has no name for the empty string, so that one
-    is a comment: still there to read, and no error to the parser."""
-    stored = value["name"] if value["dbName"] is None else value["dbName"]
-    if stored == "":
-        return f'  // "" ({value["name"]}): the empty string, which DBML cannot name'
-    return f"  {_dbml_quoted(stored)}"
+def _dbml_enum_values(values: list[dict[str, Any]]) -> list[str]:
+    """The values of an enum, as they are stored, each once.
+
+    Choices may share a stored value under several labels (`mysql` for MySQL and for MariaDB),
+    which DBML takes as the same value twice: it is written once, with its labels in a note.
+    DBML has no name for the empty string, so that one is a comment: still there to read, and
+    no error to the parser.
+    """
+    labels: dict[str, list[str]] = {}
+    for value in values:
+        stored = value["name"] if value["dbName"] is None else value["dbName"]
+        labels.setdefault(stored, []).append(value["name"])
+    lines = []
+    for stored, names in labels.items():
+        if stored == "":
+            lines.append(f'  // "" ({" / ".join(names)}): the empty string, which DBML cannot name')
+        elif len(names) > 1:
+            lines.append(f"  {_dbml_quoted(stored)} [note: {_dbml_string(' / '.join(names))}]")
+        else:
+            lines.append(f"  {_dbml_quoted(stored)}")
+    return lines
 
 
 def _dbml_index(model: dict[str, Any], index: dict[str, Any]) -> str:
@@ -168,15 +208,7 @@ def _dbml_through(relation: dict[str, Any], tables: dict[str, dict[str, Any]]) -
     target = tables[relation["to"]["model"]]
     table = through["dbName"]
 
-    def column(name: str, native: str | None, setting: str) -> str:
-        return f"  {name} {_dbml_native(native or 'integer')} [{setting}]"
-
-    lines = [
-        f"Table {table} {{",
-        column(through["key"], through["keyType"], "pk, increment"),
-        column(through["fromColumn"], through["fromType"], "not null"),
-        column(through["toColumn"], through["toType"], "not null"),
-    ]
+    lines = [f"Table {table} {{", *(_dbml_column(field) for field in through["fields"])]
     if through["indexes"]:
         # The columns of the table are its fields' names already: nothing to look up.
         lines += ["", "  indexes {", *(_dbml_index({"fields": []}, i) for i in through["indexes"])]
@@ -191,6 +223,17 @@ def _dbml_through(relation: dict[str, Any], tables: dict[str, dict[str, Any]]) -
 
 
 def _dbml_default(field: dict[str, Any]) -> str | None:
+    """The default of a column: the database's own (`db_default`, as SQL) first, else the one
+    Python gives a new row."""
+    db_default = field["dbDefault"]
+    if db_default is not None:
+        if re.fullmatch(r"-?\d+(\.\d+)?", db_default):
+            return db_default
+        if db_default.upper() in ("TRUE", "FALSE"):
+            return db_default.lower()
+        if re.fullmatch(r"'(?:[^']|'')*'", db_default):
+            return _dbml_string(db_default[1:-1].replace("''", "'"))
+        return f"`{db_default}`"
     default = field["default"]
     if default is None or default == "autoincrement()":
         return None
@@ -204,7 +247,12 @@ def _dbml_default(field: dict[str, Any]) -> str | None:
     return f"`{default}`"
 
 
-def _dbml_settings(field: dict[str, Any]) -> str:
+def _dbml_column(field: dict[str, Any], note: str | None = None) -> str:
+    return f"  {column_name(field)} {_dbml_type(field)}{_dbml_settings(field, note)}"
+
+
+def _dbml_settings(field: dict[str, Any], note: str | None = None) -> str:
+    """The settings of a column; `note` is said of it beside its documentation."""
     settings = []
     if field["isId"]:
         settings.append("pk")
@@ -217,26 +265,55 @@ def _dbml_settings(field: dict[str, Any]) -> str:
         settings.append(f"default: {default}")
     if field["isRequired"] and not field["isId"]:
         settings.append("not null")
-    if field["documentation"]:
-        settings.append(f"note: {_dbml_string(field['documentation'])}")
+    generated = f"generated: {field['generated']}" if field["generated"] else None
+    notes = [text for text in (field["documentation"], generated, note) if text]
+    if notes:
+        settings.append(f"note: {_dbml_string('. '.join(notes))}")
     return f" [{', '.join(settings)}]" if settings else ""
+
+
+def _generic_notes(schema: dict[str, Any]) -> dict[tuple[str, str], str]:
+    """What DBML says of the key column of a generic foreign key, which no reference can say:
+    with its content type it names a row of any model, and which models point back to it."""
+    back: dict[tuple[str, str], list[str]] = {}
+    for relation in schema["relations"]:
+        if relation["origin"] == "generic":
+            key = (relation["to"]["model"], relation["to"]["field"])
+            back.setdefault(key, []).append(f"{relation['from']['model']}.{relation['name']}")
+    notes = {}
+    for model in schema["models"]:
+        for generic in model["genericForeignKeys"]:
+            key = (model["name"], generic["objectIdField"])
+            note = (
+                f"{generic['name']}: with {generic['contentTypeField']}, "
+                "a generic foreign key to a row of any model"
+            )
+            if back.get(key):
+                note += f" (from {', '.join(back[key])})"
+            notes[key] = note
+    return notes
 
 
 def dbml(schema: dict[str, Any]) -> str:
     """A DBML document: enums, tables with their indexes and notes, then the references."""
     tables = _tables(schema)
+    generic = _generic_notes(schema)
     blocks: list[str] = []
     for enum in schema["enums"]:
-        values = "\n".join(_dbml_enum_value(value) for value in enum["values"])
+        values = "\n".join(_dbml_enum_values(enum["values"]))
         blocks.append(f"Enum {enum['name']} {{\n{values}\n}}")
     for model in schema["models"]:
         lines = [f"Table {model['dbName']} {{"]
         lines += [
-            f"  {column_name(field)} {_dbml_type(field)}{_dbml_settings(field)}"
+            _dbml_column(field, generic.get((model["name"], field["name"])))
             for field in columns(model)
         ]
-        if model["indexes"]:
+        composite = model["primaryKey"] or []
+        if model["indexes"] or composite:
             lines += ["", "  indexes {"]
+            if composite:
+                # A key of several columns is an index in DBML, `pk` on each would be one each.
+                lines.append(f"    ({', '.join(_column_of(model, c) for c in composite)}) [pk]")
             lines += [_dbml_index(model, index) for index in model["indexes"]]
             lines.append("  }")
         if model["documentation"]:
@@ -250,15 +327,24 @@ def dbml(schema: dict[str, Any]) -> str:
             if relation["through"] is not None:
                 blocks += _dbml_through(relation, tables)
             continue
-        column = _column_of(child, relation["to"]["field"])
+        if relation["origin"] == "generic":
+            # No foreign key backs it, and a Ref would read as one: the column's note says it.
+            continue
+        referred, referring = relation_columns(tables, relation)
         arrow = "-" if relation["to"]["cardinality"] == "zero-one" else ">"
         action = DBML_ACTIONS.get(relation["onDelete"] or "")
         settings = f" [delete: {action}]" if action else ""
+        name = relation["to"]["field"] if len(referring) > 1 else referring[0]
         blocks.append(
-            f"Ref {child['dbName']}_{column}_fk: {child['dbName']}.{column} {arrow} "
-            f"{parent['dbName']}.{_column_of(parent, relation['from']['field'])}{settings}"
+            f"Ref {child['dbName']}_{name}_fk: {child['dbName']}.{_dbml_columns(referring)} "
+            f"{arrow} {parent['dbName']}.{_dbml_columns(referred)}{settings}"
         )
     return "\n\n".join(blocks) + "\n"
+
+
+def _dbml_columns(names: list[str]) -> str:
+    """One column, or several in parentheses: `(order_id, item_id)`."""
+    return names[0] if len(names) == 1 else f"({', '.join(names)})"
 
 
 def _key(model: dict[str, Any]) -> str:

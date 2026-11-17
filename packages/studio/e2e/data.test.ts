@@ -9,8 +9,10 @@ test.describe('a write the database refuses', () => {
     await expect(page.getByText(/of 6 rows/u)).toBeVisible()
     await page.getByRole('button', { name: 'Add row' }).click()
     // `django` is a tag of the seed already: the label is unique.
-    await page.locator('input[type="text"], input:not([type])').last().fill('django')
-    await page.keyboard.press('Enter')
+    const label = page.locator('input[type="text"], input:not([type])').last()
+    await label.fill('django')
+    // On the input itself: the grid may render again after the fill, and the page's focus with it.
+    await label.press('Enter')
     await expect(page.getByText('The row could not be written.').first()).toBeVisible()
     await expect(page.getByText('UNIQUE constraint failed: blog_tag.label').first()).toBeVisible()
   })

@@ -119,6 +119,16 @@ describe('renderDiagramSvg', () => {
     expect(svg).toContain('>many to many</text>')
   })
 
+  it('dashes a generic relation, which no foreign key backs, and says it is one', () => {
+    const svg = renderDiagramSvg({
+      models: [user, post],
+      relations: [relation({ origin: 'generic', name: 'ratings' })],
+      positions,
+    })
+    expect(svg).toContain('stroke-dasharray')
+    expect(svg).toContain('generic</text>')
+  })
+
   it('escapes markup in names and documentation', () => {
     const svg = renderDiagramSvg({
       models: [model('A<B', [field('x', { documentation: 'a & "b"' })])],

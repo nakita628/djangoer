@@ -6,6 +6,7 @@ import sys
 from argparse import Namespace
 from pathlib import Path
 
+import django
 import pytest
 from django.conf import settings
 from django.db import connections
@@ -13,8 +14,14 @@ from returns.result import Failure, Success
 
 from djangoer import cli
 from djangoer.studio.domain import er, export, markdown, svg
+from djangoer.studio.domain.schema import names
 
 ROOT = Path(__file__).parent
+
+
+def since(major: int, minor: int) -> bool:
+    """Whether the Django under test is this version or a later one."""
+    return django.VERSION[:2] >= (major, minor)
 
 
 def app(label: str):
@@ -60,6 +67,18 @@ def test_an_export_covers_the_projects_own_models_unless_asked_for_all():
         "Organizer",
         "Event",
         "PageViewRestriction",
+        "venue.Tag",
+        "Place",
+        "Restaurant",
+        "Connection",
+        "Gallery",
+        "Rating",
+        "Article",
+        "HistoricalArticle",
+        "annex.Tag",
+        # The models of the modern app, on the Django that has them.
+        *(["Item"] if since(5, 0) else []),
+        *(["OrderLine", "Shipment"] if since(5, 2) else []),
     ]
     everything = export.schema_for("default", ROOT, everything=True)
     assert "User" in [model["name"] for model in everything["models"]]
@@ -135,6 +154,7 @@ def test_the_commands_write_the_files(tmp_path, capsys):
         database="default",
         all=False,
         enum_values=12,
+        enums=True,
         output=[
             str(tmp_path / "er.md"),
             str(tmp_path / "out" / "schema.dbml"),
@@ -147,7 +167,9 @@ def test_the_commands_write_the_files(tmp_path, capsys):
     assert (tmp_path / "out" / "schema.dbml").is_file()
     assert not (tmp_path / "er.gif").exists()
     assert 'No ER format for ".gif"' in capsys.readouterr().err
-    docs = Namespace(database="default", all=False, enum_values=12, output=str(tmp_path / "docs"))
+    docs = Namespace(
+        database="default", all=False, enum_values=12, enums=True, output=str(tmp_path / "docs")
+    )
     assert cli.write_docs(docs) == 0
     assert (tmp_path / "docs" / "README.md").is_file()
     assert (tmp_path / "docs" / "er.svg").is_file()
@@ -372,3 +394,262 @@ def test_a_mermaid_diagram_too_long_to_draw_says_so(tmp_path, capsys, monkeypatc
     assert "more than the 100 it draws" in text
     assert cli.main(["er", "-o", str(tmp_path / "er.md")]) == 0
     assert "more than the 100 Mermaid draws" in capsys.readouterr().err
+
+
+def test_a_child_of_multi_table_inheritance_has_its_own_columns_only():
+    restaurant = next(m for m in venue()["models"] if m["name"] == "Restaurant")
+    assert [f["name"] for f in restaurant["fields"]] == [
+        "place_ptr_id",
+        "place_ptr",
+        "serves_pizza",
+    ]
+    assert restaurant["fields"][0]["isId"] is True
+    text = er.dbml(venue())
+    assert table(text, "venue_restaurant").splitlines()[1:3] == [
+        "  place_ptr_id bigint [pk]",
+        "  serves_pizza bool [default: false, not null]",
+    ]
+    # The parent's many-to-many is the parent's, written once.
+    assert text.count("Table venue_place_tags {") == 1
+    assert "venue_restaurant }o--o{" not in er.mermaid(venue())
+    assert (
+        "Ref venue_restaurant_place_ptr_id_fk: venue_restaurant.place_ptr_id - venue_place.id "
+        "[delete: cascade]"
+    ) in text
+
+
+def test_dbml_writes_a_stored_value_once_with_its_labels():
+    text = er.dbml(venue())
+    assert (
+        "Enum ConnectionEngine {\n"
+        '  "django.db.backends.postgresql"\n'
+        "  \"django.db.backends.mysql\" [note: 'MySQL / MariaDB']\n"
+        "}"
+    ) in text
+    # The docs list every choice with its label.
+    docs = markdown.render(venue(), sql="", diagram=None)
+    assert "| `MySQL` | `django.db.backends.mysql` |" in docs
+    assert "| `MariaDB` | `django.db.backends.mysql` |" in docs
+
+
+def test_docs_on_postgresql_need_no_database(postgresql):
+    schema = export.schema_for(postgresql, ROOT, everything=False)
+    text = export.render_docs(postgresql, schema)["README.md"].decode()
+    assert 'CREATE TABLE "venue_event"' in text
+    assert 'CREATE INDEX "venue_event_code_7025c133_like" ON "venue_event"' in text
+    assert connections[postgresql].connection is None
+
+
+def enum_heavy() -> dict:
+    """Three models in a chain, each with four `choices` fields: twelve enums, and no column of
+    models taller than one short card."""
+    schema = shop()
+    customer = next(m for m in schema["models"] if m["name"] == "Customer")
+    kind = next(f for f in schema["models"][1]["fields"] if f["name"] == "kind")
+    enums = []
+    for model in schema["models"]:
+        for number in range(4):
+            name = f"{model['name']}Choice{number}"
+            model["fields"].append({**kind, "name": f"choice_{number}", "type": name})
+            enums.append({**schema["enums"][0], "name": name})
+    assert customer["fields"][-1]["type"] == "CustomerChoice3"
+    return {**schema, "enums": enums}
+
+
+def test_svg_wraps_the_enums_into_columns_no_taller_than_the_models():
+    cards = svg.layout(enum_heavy())
+    models = [card for card in cards.values() if not card.enum]
+    enums = [card for card in cards.values() if card.enum]
+    bottom = max(card.y + card.height for card in models)
+    assert all(card.y + card.height <= bottom for card in enums)
+    assert len({card.column for card in enums}) > 1
+    assert min(card.column for card in enums) > max(card.column for card in models)
+
+
+def test_svg_without_enums(tmp_path, monkeypatch):
+    assert not any(card.enum for card in svg.layout(venue(), enums=False).values())
+    document = svg.render(venue(), enums=False)
+    assert 'class="enum-node"' not in document
+    assert 'class="enum-edge"' not in document
+    monkeypatch.chdir(ROOT)
+    assert cli.main(["er", "-o", str(tmp_path / "er.svg"), "--no-enums"]) == 0
+    assert 'class="enum-node"' not in (tmp_path / "er.svg").read_text()
+
+
+def test_docs_link_to_the_anchors_github_gives_the_headings():
+    own = export.schema_for("default", ROOT, everything=False)
+    text = markdown.render(own, sql="", diagram=None)
+    # GitHub drops the dot of `venue.Tag` from the heading's anchor.
+    assert "## venue.Tag\n" in text
+    assert "[venue.Tag](#venuetag)" in text
+    assert "[annex.Tag](#annextag)" in text
+    assert "(#venue.tag)" not in text
+    assert "- `photos` — many to many with [venue.Tag](#venuetag)" in text
+
+
+def test_slugs_are_githubs():
+    seen: dict[str, int] = {}
+    names = ["Schema docs", "blog.Category", "cas_server.User", "Post", "Post"]
+    assert [markdown.slug(name, seen) for name in names] == [
+        "schema-docs",
+        "blogcategory",
+        "cas_serveruser",
+        "post",
+        "post-1",
+    ]
+
+
+def test_two_models_of_one_name_have_an_enum_each():
+    own = export.schema_for("default", ROOT, everything=False)
+    enums = {enum["name"]: enum for enum in own["enums"]}
+    assert [value["dbName"] for value in enums["VenueTagKind"]["values"]] == ["a", "b"]
+    assert [value["dbName"] for value in enums["AnnexTagKind"]["values"]] == ["x"]
+    kinds = {
+        model["name"]: next(f["type"] for f in model["fields"] if f["name"] == "kind")
+        for model in own["models"]
+        if model["name"].endswith(".Tag")
+    }
+    assert kinds == {"venue.Tag": "VenueTagKind", "annex.Tag": "AnnexTagKind"}
+
+
+def test_dbml_writes_the_columns_a_through_model_adds():
+    text = table(er.dbml(venue()), "venue_gallery_photos")
+    assert text.splitlines()[1:5] == [
+        "  id integer [pk, increment]",
+        "  gallery_id bigint [not null]",
+        "  tag_id bigint [not null]",
+        "  sort_value integer [default: 0, not null]",
+    ]
+
+
+def test_a_generic_foreign_key_and_the_generic_relations_to_it():
+    schema = venue()
+    rating = next(m for m in schema["models"] if m["name"] == "Rating")
+    assert rating["genericForeignKeys"] == [
+        {
+            "name": "content_object",
+            "contentTypeField": "content_type_id",
+            "objectIdField": "object_id",
+        }
+    ]
+    generic = next(r for r in schema["relations"] if r["origin"] == "generic")
+    assert generic["from"] == {"model": "Article", "field": "id", "cardinality": "one"}
+    assert generic["to"] == {"model": "Rating", "field": "object_id", "cardinality": "zero-many"}
+    assert generic["name"] == "ratings"
+    text = markdown.render(schema, sql="", diagram=None)
+    assert (
+        "- `content_object` → any model, by `content_type_id` + `object_id` (generic foreign key)"
+    ) in text
+    assert (
+        "- `object_id` → [Article](#article).`id` where `content_type_id` is Article "
+        "(generic, `Article.ratings`)"
+    ) in text
+    assert (
+        "- `ratings` ← [Rating](#rating), by `content_type_id` + `object_id` (generic relation)"
+    ) in text
+    assert '    venue_article ||..o{ venue_rating : "(id) - (object_id)"' in er.mermaid(schema)
+    dbml = er.dbml(schema)
+    # No reference, which would read as a foreign key: a note on the key column.
+    assert "Ref venue_rating_object_id_fk" not in dbml
+    assert (
+        "note: 'content_object: with content_type_id, a generic foreign key to a row of any "
+        "model (from Article.ratings)']"
+    ) in table(dbml, "venue_rating")
+    assert 'stroke-dasharray="2 3"' in svg.render(schema)
+
+
+def test_docs_keep_what_was_collected_when_an_add_on_connects(postgresql, monkeypatch):
+    # django-pgtrigger opens a transaction for each trigger it adds, which connects.
+    editor = type(connections[postgresql].schema_editor())
+    create_model = editor.create_model
+
+    def with_a_trigger(self, model):
+        create_model(self, model)
+        self.connection.ensure_connection()
+
+    monkeypatch.setattr(editor, "create_model", with_a_trigger)
+    schema = export.schema_for(postgresql, ROOT, everything=False)
+    sql = markdown.create_sql(schema, names(), postgresql)
+    assert 'CREATE TABLE "venue_event"' in sql
+    assert 'CREATE INDEX "venue_event_code_7025c133" ON "venue_event"' in sql
+    assert "-- Not collected: what is added to these tables needs the database" in sql
+    assert "\n-- Event: " in sql
+
+
+def test_a_model_a_package_makes_for_the_project_is_the_projects():
+    own = export.schema_for("default", ROOT, everything=False)
+    history = next(m for m in own["models"] if m["name"] == "HistoricalArticle")
+    # Its class has no `class` statement to open the source at, but it is the project's.
+    assert history["own"] is True
+    assert history["location"] is None
+    assert any(
+        r["from"]["model"] == "Article" and r["to"]["model"] == "HistoricalArticle"
+        for r in own["relations"]
+    )
+    assert "Table venue_historicalarticle {" in er.dbml(own)
+
+
+def modern():
+    return app("modern")
+
+
+@pytest.mark.skipif(not since(5, 2), reason="CompositePrimaryKey is Django 5.2's")
+def test_a_composite_primary_key_and_a_foreign_object_to_it():
+    schema = modern()
+    line = next(m for m in schema["models"] if m["name"] == "OrderLine")
+    assert line["primaryKey"] == ["order_id", "item_id"]
+    text = er.dbml(schema)
+    orderline = table(text, "modern_orderline")
+    assert "    (order_id, item_id) [pk]" in orderline
+    # The key is the index, not `pk` on each column, which would be a key each.
+    assert "  order_id integer [not null]" in orderline
+    assert (
+        "Ref modern_shipment_line_fk: modern_shipment.(order_id, item_id) > "
+        "modern_orderline.(order_id, item_id) [delete: cascade]"
+    ) in text
+    mermaid = er.mermaid(schema)
+    assert "        IntegerField order_id PK\n" in mermaid
+    assert "        ForeignKey item_id PK\n" in mermaid
+    assert (
+        'modern_orderline ||--o{ modern_shipment : "(order_id, item_id) - (order_id, item_id)"'
+    ) in mermaid
+    docs = markdown.render(schema, sql="", diagram=None)
+    assert "| `order_id` | `IntegerField` | `integer` |  | PK |  |  |" in docs
+    assert "| `item_id` | `ForeignKey` | `bigint` |  | PK, FK |  |  |" in docs
+    assert (
+        "- `line` (`order_id`, `item_id`) → [OrderLine](#orderline).(`order_id`, `item_id`), "
+        "on delete cascade"
+    ) in docs
+    assert ("order_id", "IntegerField", "PK") in svg.layout(schema)["OrderLine"].rows
+
+
+@pytest.mark.skipif(not since(5, 0), reason="GeneratedField and db_default are 5.0's")
+def test_generated_columns_database_defaults_and_comments():
+    schema = modern()
+    item = next(m for m in schema["models"] if m["name"] == "Item")
+    fields = {field["name"]: field for field in item["fields"]}
+    assert '"price" + "tax"' in fields["total"]["generated"]
+    # Created without NOT NULL, as Django creates a generated column.
+    assert fields["total"]["isRequired"] is False
+    assert fields["stock"]["dbDefault"] == "0"
+    assert fields["stock"]["default"] is None
+    assert fields["name"]["documentation"] == "The name shown to customers — Shown in lists"
+    assert item["documentation"] == "Things we sell"
+    text = table(er.dbml(schema), "modern_item")
+    assert "  total decimal [note: 'generated: " in text
+    assert "  stock integer [default: 0, not null]" in text
+    assert "  created datetime [default: `(" in text
+    assert (
+        "  name varchar(50) [not null, note: 'The name shown to customers — Shown in lists']"
+    ) in text
+    assert "Note: '''Things we sell'''" in text
+    docs = markdown.render(schema, sql="", diagram=None)
+    assert "| `total` | `GeneratedField` | `decimal` | yes |  | generated: `" in docs
+    assert "| `stock` | `IntegerField` | `integer` |  |  | `0` (database) |  |" in docs
+    assert "\nThings we sell\n" in docs
+
+
+def test_a_python_default_and_a_database_default_are_apart():
+    product = next(m for m in shop()["models"] if m["name"] == "Product")
+    kind = next(f for f in product["fields"] if f["name"] == "kind")
+    assert (kind["default"], kind["dbDefault"], kind["generated"]) == ("'book'", None, None)

@@ -3,7 +3,7 @@
   "info": {
     "title": "Djangoer Studio",
     "description": "The API behind Djangoer Studio: the schema, the database, the Django ORM playground and the docs.",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "servers": [
     {
@@ -2535,6 +2535,28 @@
             ],
             "title": "Default"
           },
+          "dbDefault": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dbdefault"
+          },
+          "generated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated"
+          },
           "nativeType": {
             "anyOf": [
               {
@@ -2596,6 +2618,8 @@
           "isUpdatedAt",
           "isForeignKey",
           "default",
+          "dbDefault",
+          "generated",
           "nativeType",
           "documentation",
           "annotations",
@@ -2719,6 +2743,31 @@
         ],
         "title": "FileWrite",
         "description": "A model file as it was edited in Studio, to write back."
+      },
+      "GenericForeignKey": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "contentTypeField": {
+            "type": "string",
+            "title": "Contenttypefield"
+          },
+          "objectIdField": {
+            "type": "string",
+            "title": "Objectidfield"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "contentTypeField",
+          "objectIdField"
+        ],
+        "title": "GenericForeignKey",
+        "description": "A pair of columns that names a row of any model: `content_object` is the row whose\ncontent type is in `content_type_id` and whose key is in `object_id`."
       },
       "GraphEdge": {
         "properties": {
@@ -3081,6 +3130,13 @@
             "type": "array",
             "title": "Indexes"
           },
+          "genericForeignKeys": {
+            "items": {
+              "$ref": "#/components/schemas/GenericForeignKey"
+            },
+            "type": "array",
+            "title": "Genericforeignkeys"
+          },
           "attributes": {
             "items": {
               "type": "string"
@@ -3097,6 +3153,10 @@
                 "type": "null"
               }
             ]
+          },
+          "own": {
+            "type": "boolean",
+            "title": "Own"
           }
         },
         "additionalProperties": false,
@@ -3110,8 +3170,10 @@
           "fields",
           "primaryKey",
           "indexes",
+          "genericForeignKeys",
           "attributes",
-          "location"
+          "location",
+          "own"
         ],
         "title": "Model"
       },
@@ -3323,7 +3385,8 @@
             "enum": [
               "inferred",
               "annotated",
-              "implicit-many-to-many"
+              "implicit-many-to-many",
+              "generic"
             ],
             "title": "Origin"
           },
@@ -4007,50 +4070,20 @@
             "type": "string",
             "title": "Dbname"
           },
-          "key": {
-            "type": "string",
-            "title": "Key"
-          },
-          "keyType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Keytype"
-          },
           "fromColumn": {
             "type": "string",
             "title": "Fromcolumn"
-          },
-          "fromType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fromtype"
           },
           "toColumn": {
             "type": "string",
             "title": "Tocolumn"
           },
-          "toType": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Totype"
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/Field"
+            },
+            "type": "array",
+            "title": "Fields"
           },
           "indexes": {
             "items": {
@@ -4064,16 +4097,13 @@
         "type": "object",
         "required": [
           "dbName",
-          "key",
-          "keyType",
           "fromColumn",
-          "fromType",
           "toColumn",
-          "toType",
+          "fields",
           "indexes"
         ],
         "title": "Through",
-        "description": "The table Django creates for a many-to-many: its key, and a column for each side."
+        "description": "The table Django creates for a many-to-many: its columns, the two that refer to each\nside, and its indexes."
       },
       "UpdateBody": {
         "properties": {

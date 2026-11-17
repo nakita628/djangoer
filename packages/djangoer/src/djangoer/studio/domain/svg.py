@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from html import escape
 from typing import Any
 
-from .er import column_name, columns
+from .er import column_name, columns, is_key
 
 # The narrowest a card is; it widens to its longest line, up to the widest.
 NODE_WIDTH = 340
@@ -130,7 +130,7 @@ def _cards(schema: dict[str, Any], enum_rows: int | None) -> dict[str, Card]:
             (
                 column_name(field),
                 field["type"] + ("" if field["isRequired"] else "?"),
-                "PK" if field["isId"] else "FK" if field["isForeignKey"] else "",
+                "PK" if is_key(model, field) else "FK" if field["isForeignKey"] else "",
             )
             for field in columns(model)
         ]
@@ -168,27 +168,50 @@ def _ranks(schema: dict[str, Any], cards: dict[str, Card]) -> dict[str, int]:
     for name, card in cards.items():
         if not card.enum:
             rank(name, frozenset())
-    last = max(ranks.values(), default=-1) + 1
-    for name, card in cards.items():
-        if card.enum:
-            ranks[name] = last
     return ranks
 
 
-def layout(schema: dict[str, Any], *, enum_rows: int | None = ENUM_ROWS) -> dict[str, Card]:
+def _enum_columns(enums: list[Card], height: float) -> list[list[Card]]:
+    """The enum cards in columns no taller than `height`, the tallest column of models: one
+    column of every enum would set the height of a large diagram on its own."""
+    columns: list[list[Card]] = []
+    used = height
+    for card in enums:
+        if columns and used + card.height <= height:
+            columns[-1].append(card)
+            used += card.height + ROW_GAP
+        else:
+            columns.append([card])
+            used = card.height + ROW_GAP
+    return columns
+
+
+def layout(
+    schema: dict[str, Any], *, enum_rows: int | None = ENUM_ROWS, enums: bool = True
+) -> dict[str, Card]:
     """Every card with its place: columns left to right, cards of a column top to bottom.
 
-    The cards of a column are as wide as the widest of them, so the gaps between columns, where
-    the lines run, are straight.
+    The models are in columns by rank, the enums after them, in as many columns as keep them
+    no taller than the models. The cards of a column are as wide as the widest of them, so the
+    gaps between columns, where the lines run, are straight. Without `enums` there is no enum
+    card: the docs list every value.
     """
     cards = _cards(schema, enum_rows)
+    if not enums:
+        cards = {name: card for name, card in cards.items() if not card.enum}
     ranks = _ranks(schema, cards)
     by_rank: dict[int, list[Card]] = {}
-    for name, card in cards.items():
-        by_rank.setdefault(ranks[name], []).append(card)
+    for name, rank in ranks.items():
+        by_rank.setdefault(rank, []).append(cards[name])
+    columns = [by_rank[rank] for rank in sorted(by_rank)]
+
+    def height(column: list[Card]) -> float:
+        return sum(card.height for card in column) + ROW_GAP * (len(column) - 1)
+
+    tallest = max(map(height, columns), default=0)
+    columns += _enum_columns([card for card in cards.values() if card.enum], tallest)
     x = float(MARGIN)
-    for index, rank in enumerate(sorted(by_rank)):
-        column = by_rank[rank]
+    for index, column in enumerate(columns):
         width = min(max([NODE_WIDTH, *map(_needed, column)]), MAX_NODE_WIDTH)
         y = float(MARGIN)
         for card in column:
@@ -368,7 +391,10 @@ def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> li
         parent_y = parent.row_y(column(parent.name, relation["from"]["field"]))
         child_y = child.row_y(column(child.name, relation["to"]["field"]))
         points = router.between(parent, parent_y, child, child_y)
-        dash = ' stroke-dasharray="5 4"' if many_to_many else ""
+        # Dashed: no foreign key backs it. A generic relation in shorter dashes than a
+        # many-to-many, which a table of its own does back.
+        dashes = {"implicit-many-to-many": "5 4", "generic": "2 3"}.get(relation["origin"])
+        dash = f' stroke-dasharray="{dashes}"' if dashes else ""
         parts.append(
             f'<path class="relation-edge" d="{_line(points)}" fill="none" '
             f'stroke="{COLORS["edge"]}" stroke-width="1.4"{dash}/>'
@@ -397,9 +423,9 @@ def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> li
     return parts
 
 
-def render(schema: dict[str, Any], *, enum_rows: int | None = ENUM_ROWS) -> str:
+def render(schema: dict[str, Any], *, enum_rows: int | None = ENUM_ROWS, enums: bool = True) -> str:
     """The diagram of a schema as one SVG document."""
-    cards = layout(schema, enum_rows=enum_rows)
+    cards = layout(schema, enum_rows=enum_rows, enums=enums)
     router = Router(cards)
     edges = _edges(schema, cards, router)
     # The tracks above the cards and the lanes right of the last column are part of the picture.

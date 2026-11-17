@@ -72,11 +72,15 @@ export type Cardinality = 'zero-one' | 'one' | 'zero-many' | 'many'
  *   hung off the card headers rather than off a field row, because there is no scalar field at
  *   either end to point at.
  *
+ * - `generic` — a `GenericRelation`: the rows of another model whose content type and key
+ *   columns name this model (`Rating.object_id` where `content_type` is Article). No foreign
+ *   key can say that. Drawn dashed.
+ *
  * So a dashed edge means "nothing in the database enforces this", not "many to many": an
  * explicit many-to-many written as a join model is two `inferred` relations and draws solid,
  * while an `annotated` one-to-many draws dashed.
  */
-export type RelationOrigin = 'inferred' | 'annotated' | 'implicit-many-to-many'
+export type RelationOrigin = 'inferred' | 'annotated' | 'implicit-many-to-many' | 'generic'
 
 /** A field of a model as the drawing shows it. */
 export type SchemaField = {

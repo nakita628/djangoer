@@ -13,7 +13,7 @@ from .base import Contract
 FieldKind = Literal["scalar", "object", "enum", "unsupported"]
 IndexType = Literal["id", "unique", "normal", "fulltext"]
 Cardinality = Literal["zero-one", "one", "zero-many", "many"]
-RelationOrigin = Literal["inferred", "annotated", "implicit-many-to-many"]
+RelationOrigin = Literal["inferred", "annotated", "implicit-many-to-many", "generic"]
 Severity = Literal["error", "warning", "information", "hint"]
 
 
@@ -70,7 +70,11 @@ class Field(Contract):
     is_unique: bool
     is_updated_at: bool
     is_foreign_key: bool
+    # The default Python gives a new row; `db_default` is the one of the database, as SQL.
     default: str | None
+    db_default: str | None
+    # The expression of a generated column, as SQL: `"price" + "tax"`.
+    generated: str | None
     native_type: str | None
     documentation: str | None
     annotations: list[str]
@@ -92,6 +96,15 @@ class Index(Contract):
     attribute: str
 
 
+class GenericForeignKey(Contract):
+    """A pair of columns that names a row of any model: `content_object` is the row whose
+    content type is in `content_type_id` and whose key is in `object_id`."""
+
+    name: str
+    content_type_field: str
+    object_id_field: str
+
+
 class Model(Contract):
     name: str
     app: str
@@ -101,8 +114,11 @@ class Model(Contract):
     fields: list[Field]
     primary_key: list[str] | None
     indexes: list[Index]
+    generic_foreign_keys: list[GenericForeignKey]
     attributes: list[str]
     location: Location | None
+    # The project's own model, not an installed package's: in the project's directory.
+    own: bool
 
 
 class EnumValue(Contract):
@@ -125,15 +141,13 @@ class RelationEnd(Contract):
 
 
 class Through(Contract):
-    """The table Django creates for a many-to-many: its key, and a column for each side."""
+    """The table Django creates for a many-to-many: its columns, the two that refer to each
+    side, and its indexes."""
 
     db_name: str
-    key: str
-    key_type: str | None
     from_column: str
-    from_type: str | None
     to_column: str
-    to_type: str | None
+    fields: list[Field]
     indexes: list[Index]
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import enum
 import inspect
+import re
 import sysconfig
 import traceback
 from datetime import datetime, timezone
@@ -98,13 +99,46 @@ def _default(field: models.Field) -> str | None:
     if getattr(field, "auto_now", False) or getattr(field, "auto_now_add", False):
         return "now()"
     if field.default is NOT_PROVIDED:
-        db_default = getattr(field, "db_default", NOT_PROVIDED)
-        return None if db_default is NOT_PROVIDED else f"db_default={_repr(db_default)}"
+        # A default of the database is `dbDefault`, as the SQL it is: not Python's.
+        return None
     if callable(field.default):
         return f"{_repr(field.default)}()"
     if isinstance(field.default, enum.Enum):
         return repr(field.default.value)
     return _repr(field.default)
+
+
+def _compiled(alias: str, build) -> str | None:
+    """SQL Django writes for this database, its parameters in place; None when the backend
+    cannot write it (or the Django is too old to have it)."""
+    try:
+        connection = connections[alias]
+        editor = connection.schema_editor()
+        sql, params = build(connection, editor)
+    except Exception:  # noqa: BLE001 - a backend that cannot compile it offline
+        return None
+    return sql % tuple(editor.quote_value(param) for param in params) if params else sql
+
+
+def _db_default(field: models.Field, alias: str) -> str | None:
+    """`db_default` as the SQL the column is created with: `0`, `(CURRENT_TIMESTAMP)`."""
+    if getattr(field, "db_default", NOT_PROVIDED) is NOT_PROVIDED:
+        return None
+    return _compiled(alias, lambda _connection, editor: editor.db_default_sql(field))
+
+
+def _generated(field: models.Field, alias: str) -> str | None:
+    """The expression of a `GeneratedField`, as the database computes it: `"price" + "tax"`."""
+    if not getattr(field, "generated", False):
+        return None
+    return _compiled(alias, lambda connection, _editor: field.generated_sql(connection))
+
+
+def _comments(*texts: object) -> str | None:
+    """What describes a column or a table, each text once: the comment the database keeps
+    (`db_comment`, `db_table_comment`) first, then the one of the code."""
+    seen = [str(text).strip() for text in texts if text and str(text).strip()]
+    return " — ".join(dict.fromkeys(seen)) or None
 
 
 def _attributes(field: models.Field) -> list[str]:
@@ -133,7 +167,7 @@ def _native_type(field: models.Field, alias: str) -> str | None:
         return None
 
 
-def _enum_name(model: type[models.Model], field: models.Field) -> str:
+def _enum_name(model: type[models.Model], field: models.Field, owner: str) -> str:
     """The Choices class a field's choices came from, else a name made from model and field."""
     choices = list(field.flatchoices)
     candidates: list[type] = []
@@ -147,7 +181,7 @@ def _enum_name(model: type[models.Model], field: models.Field) -> str:
         if list(candidate.choices) == choices:
             # `Post.Status` is PostStatus: many models have a Status of their own.
             return candidate.__qualname__.replace(".", "")
-    return f"{model.__name__}{''.join(part.title() for part in field.name.split('_'))}"
+    return f"{owner}{''.join(part.title() for part in field.name.split('_'))}"
 
 
 def _enum_values(model: type[models.Model], field: models.Field) -> list[dict[str, Any]]:
@@ -182,42 +216,74 @@ def _location(obj: Any, root: Path) -> dict[str, Any] | None:
 def _documentation(model: type[models.Model]) -> str | None:
     doc = inspect.cleandoc(model.__doc__ or "")
     # Django writes `Name(field, field, …)` as the docstring of a model that has none.
-    if not doc or doc.startswith(f"{model.__name__}("):
-        return None
-    return doc
+    if doc.startswith(f"{model.__name__}("):
+        doc = ""
+    return _comments(getattr(model._meta, "db_table_comment", None), doc)
+
+
+def _camel(text: str) -> str:
+    """`cas_server` → `CasServer`, `blog.Product` → `BlogProduct`."""
+    return "".join(part[:1].upper() + part[1:] for part in re.split(r"[._]", text))
+
+
+def _enum(
+    model: type[models.Model], field: models.Field, owner: str, enums: dict[str, dict]
+) -> str:
+    """The name of a field's enum, registered in `enums` with its values.
+
+    A model named by its app (`blog.Product`, as another app has a `Product`) names its enums
+    by its app too: `BlogProductStatus`. Two enums that still meet under one name with other
+    values (a `Product.Status` in two apps) are told apart by the app, then by a number: the
+    second one's values are not to be lost to the first one's.
+    """
+    values = _enum_values(model, field)
+
+    def taken(name: str) -> bool:
+        return name in enums and enums[name]["values"] != values
+
+    name = _enum_name(model, field, _camel(owner))
+    if taken(name):
+        name = _camel(model._meta.app_label) + name
+    stem, number = name, 2
+    while taken(name):
+        name, number = f"{stem}{number}", number + 1
+    enums.setdefault(
+        name,
+        {"name": name, "dbName": None, "documentation": None, "values": values, "location": None},
+    )
+    return name
 
 
 def _scalar_field(
-    model: type[models.Model], field: models.Field, alias: str, enums: dict[str, dict]
+    model: type[models.Model],
+    field: models.Field,
+    alias: str,
+    enums: dict[str, dict],
+    owner: str | None = None,
 ) -> dict[str, Any]:
+    """A column. `owner` is the name the model goes by (`blog.Product`), for its enums."""
     kind = "scalar"
     type_name = type(field).__name__
     if field.choices:
         kind = "enum"
-        type_name = _enum_name(model, field)
-        enums.setdefault(
-            type_name,
-            {
-                "name": type_name,
-                "dbName": None,
-                "documentation": None,
-                "values": _enum_values(model, field),
-                "location": None,
-            },
-        )
-    documentation = str(field.help_text) if field.help_text else None
+        type_name = _enum(model, field, owner or model.__name__, enums)
+    documentation = _comments(getattr(field, "db_comment", None), field.help_text)
+    generated = _generated(field, alias)
     return {
         "name": field.attname,
         "dbName": field.column if field.column != field.attname else None,
         "kind": kind,
         "type": type_name,
         "isList": False,
-        "isRequired": not field.null,
+        # A generated column is created without NOT NULL, whatever `null` says.
+        "isRequired": not field.null and generated is None,
         "isId": bool(field.primary_key),
         "isUnique": bool(field.unique and not field.primary_key),
         "isUpdatedAt": bool(getattr(field, "auto_now", False)),
         "isForeignKey": bool((field.is_relation and field.many_to_one) or field.one_to_one),
         "default": _default(field),
+        "dbDefault": _db_default(field, alias),
+        "generated": generated,
         "nativeType": _native_type(field, alias),
         "documentation": documentation,
         "annotations": [],
@@ -248,6 +314,8 @@ def _object_field(
         "isUpdatedAt": False,
         "isForeignKey": False,
         "default": None,
+        "dbDefault": None,
+        "generated": None,
         "nativeType": None,
         "documentation": documentation,
         "annotations": [],
@@ -474,7 +542,9 @@ def build_model(
 ) -> dict[str, Any]:
     meta = model._meta
     fields: list[dict[str, Any]] = []
-    for field in meta.get_fields():
+    # The model's own fields: with multi-table inheritance the parent's are in the parent's
+    # table, and the child has the link to it (`place_ptr_id`) and its own columns.
+    for field in meta.get_fields(include_parents=False):
         if isinstance(field, ForeignObjectRel):
             # The other side of a relation declared elsewhere: `author.post_set`.
             accessor = field.get_accessor_name()
@@ -522,10 +592,14 @@ def build_model(
                 )
             )
             continue
+        composite = _composite_relation(field, known)
+        if composite is not None:
+            fields.append(composite)
+            continue
         if not getattr(field, "concrete", False) or getattr(field, "column", None) is None:
             # GenericForeignKey, CompositePrimaryKey: nothing a row carries under that name.
             continue
-        fields.append(_scalar_field(model, field, alias, enums))
+        fields.append(_scalar_field(model, field, alias, enums, known.of(model)))
         if field.is_relation and (field.many_to_one or field.one_to_one):
             target = known.of(field.related_model)
             if target is None:
@@ -554,6 +628,7 @@ def build_model(
         if field["relation"] is not None:
             del field["relation"]["declared"]
     key = _primary_key(model)
+    own = _in_project(_source_file(model), root)
     return {
         "name": known.of(model),
         "app": meta.app_label,
@@ -563,19 +638,25 @@ def build_model(
         "fields": fields,
         "primaryKey": key if len(key) > 1 else None,
         "indexes": _indexes(model, alias),
+        "genericForeignKeys": _generic_foreign_keys(model),
         "attributes": _meta_attributes(model),
         # Where the class is written, when it is the project's: the source page opens there.
-        "location": _location(model, root) if _in_project(_source_file(model), root) else None,
+        "location": _location(model, root) if own else None,
+        # The project's own, by the module it is in: a model a package makes for one of the
+        # project's (django-simple-history's `HistoricalArticle`) has no `class` statement to
+        # be found at, but it is in the project's app, its database and its migrations.
+        "own": own,
     }
 
 
 def build_relations(
-    model_list: list[type[models.Model]], known: Names, alias: str
+    model_list: list[type[models.Model]], known: Names, alias: str, enums: dict[str, dict]
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for model in model_list:
         child = known.of(model)
-        for field in model._meta.get_fields():
+        # A relation inherited from a concrete parent is the parent's, drawn once from it.
+        for field in model._meta.get_fields(include_parents=False):
             if isinstance(field, ForeignObjectRel):
                 continue
             if field.many_to_many:
@@ -594,9 +675,37 @@ def build_relations(
                         "to": {"model": other, "field": inverse, "cardinality": "zero-many"},
                         "onDelete": None,
                         "onUpdate": None,
-                        "through": _through(field, alias),
+                        "through": _through(field, alias, enums),
                     }
                 )
+                continue
+            generic = _generic_relation(field, model, known)
+            if generic is not None:
+                out.append(generic)
+                continue
+            if _composite(field):
+                parent = known.of(field.related_model)
+                if parent is not None:
+                    on_delete = getattr(field.remote_field, "on_delete", None)
+                    target = field.related_model._meta.pk.name
+                    # Each end names the field that stands for its columns: the composite key
+                    # (`pk`), and the ForeignObject (`line`), which says which columns it reads.
+                    out.append(
+                        {
+                            "id": f"{parent}.{target}->{child}.{field.name}",
+                            "name": _relation_name(field),
+                            "origin": "inferred",
+                            "from": {
+                                "model": parent,
+                                "field": target,
+                                "cardinality": "zero-one" if field.null else "one",
+                            },
+                            "to": {"model": child, "field": field.name, "cardinality": "zero-many"},
+                            "onDelete": getattr(on_delete, "__name__", None),
+                            "onUpdate": None,
+                            "through": None,
+                        }
+                    )
                 continue
             if not (field.is_relation and (field.many_to_one or field.one_to_one)):
                 continue
@@ -630,21 +739,108 @@ def build_relations(
     return out
 
 
-def _through(field: models.ManyToManyField, alias: str) -> dict[str, Any]:
-    """The table Django creates for a many-to-many: its key, a column for each side, and the
-    indexes it has (one per column, and the pair unique)."""
+def _composite(field: Any) -> bool:
+    """A `ForeignObject` of several columns, the way to refer to a composite primary key: a
+    relation with no column of its own, its columns are other fields of the model."""
+    return (
+        isinstance(field, models.ForeignObject)
+        and getattr(field, "column", None) is None
+        and field.many_to_one
+        and len(field.local_related_fields) > 0
+    )
+
+
+def _composite_relation(field: Any, known: Names) -> dict[str, Any] | None:
+    """The object field of a `ForeignObject`: what it reads (`order_id`, `item_id`) and what
+    that is on the other model."""
+    if not _composite(field):
+        return None
+    target = known.of(field.related_model)
+    if target is None:
+        return None
+    on_delete = getattr(field.remote_field, "on_delete", None)
+    return _object_field(
+        field.name,
+        target,
+        is_list=False,
+        required=not field.null,
+        relation={
+            "declared": True,
+            "name": _relation_name(field),
+            "fromFields": [column.attname for column in field.local_related_fields],
+            "toFields": [column.attname for column in field.foreign_related_fields],
+            "onDelete": getattr(on_delete, "__name__", None),
+            "onUpdate": None,
+        },
+        attributes=_attributes(field),
+    )
+
+
+def _generic_foreign_keys(model: type[models.Model]) -> list[dict[str, str]]:
+    """The `GenericForeignKey`s of a model: a pair of columns that names a row of any model,
+    the one of its content type and the one of its key."""
+    out = []
+    for field in model._meta.private_fields:
+        # Told by its attributes: contenttypes is not imported unless the project installs it.
+        ct_field, fk_field = getattr(field, "ct_field", None), getattr(field, "fk_field", None)
+        if not (isinstance(ct_field, str) and isinstance(fk_field, str)):
+            continue
+        try:
+            content_type = model._meta.get_field(ct_field).attname
+            object_id = model._meta.get_field(fk_field).attname
+        except FieldDoesNotExist:
+            continue
+        out.append(
+            {"name": field.name, "contentTypeField": content_type, "objectIdField": object_id}
+        )
+    return out
+
+
+def _generic_relation(field: Any, model: type[models.Model], known: Names) -> dict[str, Any] | None:
+    """A `GenericRelation` as the relation it stands for: the rows of another model whose pair
+    of columns names this model (`Rating.object_id`, where `content_type` is Article). Nothing
+    in the database backs it, so it is a relation of its own kind, `generic`."""
+    object_id = getattr(field, "object_id_field_name", None)
+    if not (isinstance(object_id, str) and getattr(field, "content_type_field_name", None)):
+        return None
+    parent, child = known.of(model), known.of(field.related_model)
+    if parent is None or child is None:
+        return None
+    try:
+        column = field.related_model._meta.get_field(object_id).attname
+    except FieldDoesNotExist:
+        return None
+    key = model._meta.pk.attname
+    return {
+        "id": f"{parent}.{key}~>{child}.{column}",
+        "name": field.name,
+        "origin": "generic",
+        "from": {"model": parent, "field": key, "cardinality": "one"},
+        "to": {"model": child, "field": column, "cardinality": "zero-many"},
+        "onDelete": None,
+        "onUpdate": None,
+        "through": None,
+    }
+
+
+def _through(field: models.ManyToManyField, alias: str, enums: dict[str, dict]) -> dict[str, Any]:
+    """The table Django creates for a many-to-many: its columns, which side each of the two
+    keys refers to, and the indexes it has (one per key, and the pair unique).
+
+    The columns are the through model's own, not only the key and the two sides: a field may
+    give it more (django-sortedm2m's `sort_value`).
+    """
     through = field.remote_field.through
     meta = through._meta
     source = meta.get_field(field.m2m_field_name())
     target = meta.get_field(field.m2m_reverse_field_name())
     return {
         "dbName": meta.db_table,
-        "key": meta.pk.column,
-        "keyType": _native_type(meta.pk, alias),
         "fromColumn": source.column,
-        "fromType": _native_type(source, alias),
         "toColumn": target.column,
-        "toType": _native_type(target, alias),
+        "fields": [
+            _scalar_field(through, column, alias, enums) for column in meta.local_concrete_fields
+        ],
         "indexes": _indexes(through, alias),
     }
 
@@ -694,12 +890,14 @@ def build_schema(alias: str = "default", root: Path | None = None) -> dict[str, 
     known = Names(model_list)
     enums: dict[str, dict] = {}
     built = [build_model(model, known, alias, root, enums) for model in model_list]
+    # Before the enums are listed: a column of a many-to-many's table may have choices too.
+    relations = build_relations(model_list, known, alias, enums)
     return {
         "files": _files(model_list, root),
         "provider": connections[alias].vendor if alias in connections else None,
         "models": built,
         "enums": list(enums.values()),
-        "relations": build_relations(model_list, known, alias),
+        "relations": relations,
     }
 
 

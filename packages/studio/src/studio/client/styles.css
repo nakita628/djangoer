@@ -622,10 +622,15 @@
 /* A relation no foreign key backs: declared in a `/// @relation` comment, or an implicit
    many-to-many whose pairs live in a join table of Django's own. Dashed is about that, not about
    cardinality — an explicit many-to-many written as a join model is two ordinary foreign keys and
-   stays solid. `RelationOrigin` (types/diagram.ts) is where the three origins are spelled out. */
+   stays solid. `RelationOrigin` (types/diagram.ts) is where the origins are spelled out. */
 .react-flow__edge.relation-edge--annotated .react-flow__edge-path,
 .react-flow__edge.relation-edge--implicit-many-to-many .react-flow__edge-path {
   stroke-dasharray: 5 4;
+}
+
+/* A generic relation: a content type and a key that name a row, which no foreign key backs. */
+.react-flow__edge.relation-edge--generic .react-flow__edge-path {
+  stroke-dasharray: 2 3;
 }
 
 .react-flow__edge.is-highlighted .react-flow__edge-path {
