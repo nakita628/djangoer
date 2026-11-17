@@ -6,6 +6,7 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "project.shop",
     "project.venue",
+    "project.annex",
     "djangoer",
 ]
 # A file, not :memory:, which is one database per connection: the server reads from worker threads.

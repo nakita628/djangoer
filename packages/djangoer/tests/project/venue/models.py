@@ -4,6 +4,8 @@ expressions and with conditions, long names."""
 
 import zoneinfo
 
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import Q
 from django.db.models.functions import Lower
@@ -67,6 +69,8 @@ class PageViewRestriction(models.Model):
 
 class Tag(models.Model):
     name = models.CharField(max_length=50)
+    # `annex.Tag.kind` has choices of its own: the two enums must not be one.
+    kind = models.CharField(max_length=10, choices=[("a", "A"), ("b", "B")], default="a")
 
     class Meta:
         app_label = "venue"
@@ -99,6 +103,42 @@ class Connection(models.Model):
             ("django.db.backends.mysql", "MariaDB"),
         ],
     )
+
+    class Meta:
+        app_label = "venue"
+
+
+class SortedManyToManyField(models.ManyToManyField):
+    """As django-sortedm2m's: the through model Django creates has a column of its own."""
+
+    def contribute_to_class(self, cls, name, **kwargs):
+        super().contribute_to_class(cls, name, **kwargs)
+        through = self.remote_field.through
+        if not isinstance(through, str) and through._meta.auto_created:
+            models.IntegerField(default=0).contribute_to_class(through, "sort_value")
+
+
+class Gallery(models.Model):
+    photos = SortedManyToManyField(Tag)
+
+    class Meta:
+        app_label = "venue"
+
+
+class Rating(models.Model):
+    """A row of any model: the pair of columns names it."""
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey()
+    score = models.PositiveSmallIntegerField()
+
+    class Meta:
+        app_label = "venue"
+
+
+class Article(models.Model):
+    ratings = GenericRelation(Rating)
 
     class Meta:
         app_label = "venue"

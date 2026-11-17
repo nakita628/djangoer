@@ -39,6 +39,7 @@ type Index = {
   opclasses: string[]
   attribute: string
 }
+type GenericForeignKey = { name: string; contentTypeField: string; objectIdField: string }
 type Location = { file: string; line: number }
 type Model = {
   name: string
@@ -49,6 +50,7 @@ type Model = {
   fields: Field[]
   primaryKey: string[] | null
   indexes: Index[]
+  genericForeignKeys: GenericForeignKey[]
   attributes: string[]
   location: Location | null
 }
@@ -67,18 +69,15 @@ type RelationEnd = {
 }
 type Through = {
   dbName: string
-  key: string
-  keyType: string | null
   fromColumn: string
-  fromType: string | null
   toColumn: string
-  toType: string | null
+  fields: Field[]
   indexes: Index[]
 }
 type Relation = {
   id: string
   name: string | null
-  origin: 'inferred' | 'annotated' | 'implicit-many-to-many'
+  origin: 'inferred' | 'annotated' | 'implicit-many-to-many' | 'generic'
   from: RelationEnd
   to: RelationEnd
   onDelete: string | null

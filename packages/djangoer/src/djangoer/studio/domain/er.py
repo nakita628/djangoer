@@ -96,8 +96,10 @@ def mermaid(schema: dict[str, Any]) -> str:
             f"({_column_of(parent, relation['from']['field'])}) - "
             f"({_column_of(child, relation['to']['field'])})"
         )
+        # Dotted: nothing in the database backs a generic relation.
+        line = ".." if relation["origin"] == "generic" else "--"
         lines.append(
-            f"    {_identifier(parent['dbName'])} {left}--{right} "
+            f"    {_identifier(parent['dbName'])} {left}{line}{right} "
             f'{_identifier(child["dbName"])} : "{label}"'
         )
     for model in schema["models"]:
@@ -182,15 +184,7 @@ def _dbml_through(relation: dict[str, Any], tables: dict[str, dict[str, Any]]) -
     target = tables[relation["to"]["model"]]
     table = through["dbName"]
 
-    def column(name: str, native: str | None, setting: str) -> str:
-        return f"  {name} {_dbml_native(native or 'integer')} [{setting}]"
-
-    lines = [
-        f"Table {table} {{",
-        column(through["key"], through["keyType"], "pk, increment"),
-        column(through["fromColumn"], through["fromType"], "not null"),
-        column(through["toColumn"], through["toType"], "not null"),
-    ]
+    lines = [f"Table {table} {{", *(_dbml_column(field) for field in through["fields"])]
     if through["indexes"]:
         # The columns of the table are its fields' names already: nothing to look up.
         lines += ["", "  indexes {", *(_dbml_index({"fields": []}, i) for i in through["indexes"])]
@@ -218,7 +212,12 @@ def _dbml_default(field: dict[str, Any]) -> str | None:
     return f"`{default}`"
 
 
-def _dbml_settings(field: dict[str, Any]) -> str:
+def _dbml_column(field: dict[str, Any], note: str | None = None) -> str:
+    return f"  {column_name(field)} {_dbml_type(field)}{_dbml_settings(field, note)}"
+
+
+def _dbml_settings(field: dict[str, Any], note: str | None = None) -> str:
+    """The settings of a column; `note` is said of it beside its documentation."""
     settings = []
     if field["isId"]:
         settings.append("pk")
@@ -231,14 +230,38 @@ def _dbml_settings(field: dict[str, Any]) -> str:
         settings.append(f"default: {default}")
     if field["isRequired"] and not field["isId"]:
         settings.append("not null")
-    if field["documentation"]:
-        settings.append(f"note: {_dbml_string(field['documentation'])}")
+    notes = [text for text in (field["documentation"], note) if text]
+    if notes:
+        settings.append(f"note: {_dbml_string('. '.join(notes))}")
     return f" [{', '.join(settings)}]" if settings else ""
+
+
+def _generic_notes(schema: dict[str, Any]) -> dict[tuple[str, str], str]:
+    """What DBML says of the key column of a generic foreign key, which no reference can say:
+    with its content type it names a row of any model, and which models point back to it."""
+    back: dict[tuple[str, str], list[str]] = {}
+    for relation in schema["relations"]:
+        if relation["origin"] == "generic":
+            key = (relation["to"]["model"], relation["to"]["field"])
+            back.setdefault(key, []).append(f"{relation['from']['model']}.{relation['name']}")
+    notes = {}
+    for model in schema["models"]:
+        for generic in model["genericForeignKeys"]:
+            key = (model["name"], generic["objectIdField"])
+            note = (
+                f"{generic['name']}: with {generic['contentTypeField']}, "
+                "a generic foreign key to a row of any model"
+            )
+            if back.get(key):
+                note += f" (from {', '.join(back[key])})"
+            notes[key] = note
+    return notes
 
 
 def dbml(schema: dict[str, Any]) -> str:
     """A DBML document: enums, tables with their indexes and notes, then the references."""
     tables = _tables(schema)
+    generic = _generic_notes(schema)
     blocks: list[str] = []
     for enum in schema["enums"]:
         values = "\n".join(_dbml_enum_values(enum["values"]))
@@ -246,7 +269,7 @@ def dbml(schema: dict[str, Any]) -> str:
     for model in schema["models"]:
         lines = [f"Table {model['dbName']} {{"]
         lines += [
-            f"  {column_name(field)} {_dbml_type(field)}{_dbml_settings(field)}"
+            _dbml_column(field, generic.get((model["name"], field["name"])))
             for field in columns(model)
         ]
         if model["indexes"]:
@@ -263,6 +286,9 @@ def dbml(schema: dict[str, Any]) -> str:
         if relation["origin"] == "implicit-many-to-many":
             if relation["through"] is not None:
                 blocks += _dbml_through(relation, tables)
+            continue
+        if relation["origin"] == "generic":
+            # No foreign key backs it, and a Ref would read as one: the column's note says it.
             continue
         column = _column_of(child, relation["to"]["field"])
         arrow = "-" if relation["to"]["cardinality"] == "zero-one" else ">"

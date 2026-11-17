@@ -210,7 +210,8 @@ def _lookup_type(model: type[models.Model], known: Names, name: str) -> dict[str
                 }
             )
             continue
-        if isinstance(field, ForeignObjectRel):
+        # A GenericForeignKey is a relation to no model in particular: `filter()` refuses it.
+        if isinstance(field, ForeignObjectRel) or field.is_relation:
             continue
         fields.append(
             {

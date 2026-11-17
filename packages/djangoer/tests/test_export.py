@@ -13,6 +13,7 @@ from returns.result import Failure, Success
 
 from djangoer import cli
 from djangoer.studio.domain import er, export, markdown, svg
+from djangoer.studio.domain.schema import names
 
 ROOT = Path(__file__).parent
 
@@ -60,10 +61,14 @@ def test_an_export_covers_the_projects_own_models_unless_asked_for_all():
         "Organizer",
         "Event",
         "PageViewRestriction",
-        "Tag",
+        "venue.Tag",
         "Place",
         "Restaurant",
         "Connection",
+        "Gallery",
+        "Rating",
+        "Article",
+        "annex.Tag",
     ]
     everything = export.schema_for("default", ROOT, everything=True)
     assert "User" in [model["name"] for model in everything["models"]]
@@ -459,3 +464,103 @@ def test_svg_without_enums(tmp_path, monkeypatch):
     monkeypatch.chdir(ROOT)
     assert cli.main(["er", "-o", str(tmp_path / "er.svg"), "--no-enums"]) == 0
     assert 'class="enum-node"' not in (tmp_path / "er.svg").read_text()
+
+
+def test_docs_link_to_the_anchors_github_gives_the_headings():
+    own = export.schema_for("default", ROOT, everything=False)
+    text = markdown.render(own, sql="", diagram=None)
+    # GitHub drops the dot of `venue.Tag` from the heading's anchor.
+    assert "## venue.Tag\n" in text
+    assert "[venue.Tag](#venuetag)" in text
+    assert "[annex.Tag](#annextag)" in text
+    assert "(#venue.tag)" not in text
+    assert "- `photos` — many to many with [venue.Tag](#venuetag)" in text
+
+
+def test_slugs_are_githubs():
+    seen: dict[str, int] = {}
+    names = ["Schema docs", "blog.Category", "cas_server.User", "Post", "Post"]
+    assert [markdown.slug(name, seen) for name in names] == [
+        "schema-docs",
+        "blogcategory",
+        "cas_serveruser",
+        "post",
+        "post-1",
+    ]
+
+
+def test_two_models_of_one_name_have_an_enum_each():
+    own = export.schema_for("default", ROOT, everything=False)
+    enums = {enum["name"]: enum for enum in own["enums"]}
+    assert [value["dbName"] for value in enums["VenueTagKind"]["values"]] == ["a", "b"]
+    assert [value["dbName"] for value in enums["AnnexTagKind"]["values"]] == ["x"]
+    kinds = {
+        model["name"]: next(f["type"] for f in model["fields"] if f["name"] == "kind")
+        for model in own["models"]
+        if model["name"].endswith(".Tag")
+    }
+    assert kinds == {"venue.Tag": "VenueTagKind", "annex.Tag": "AnnexTagKind"}
+
+
+def test_dbml_writes_the_columns_a_through_model_adds():
+    text = table(er.dbml(venue()), "venue_gallery_photos")
+    assert text.splitlines()[1:5] == [
+        "  id integer [pk, increment]",
+        "  gallery_id bigint [not null]",
+        "  tag_id bigint [not null]",
+        "  sort_value integer [default: 0, not null]",
+    ]
+
+
+def test_a_generic_foreign_key_and_the_generic_relations_to_it():
+    schema = venue()
+    rating = next(m for m in schema["models"] if m["name"] == "Rating")
+    assert rating["genericForeignKeys"] == [
+        {
+            "name": "content_object",
+            "contentTypeField": "content_type_id",
+            "objectIdField": "object_id",
+        }
+    ]
+    generic = next(r for r in schema["relations"] if r["origin"] == "generic")
+    assert generic["from"] == {"model": "Article", "field": "id", "cardinality": "one"}
+    assert generic["to"] == {"model": "Rating", "field": "object_id", "cardinality": "zero-many"}
+    assert generic["name"] == "ratings"
+    text = markdown.render(schema, sql="", diagram=None)
+    assert (
+        "- `content_object` → any model, by `content_type_id` + `object_id` (generic foreign key)"
+    ) in text
+    assert (
+        "- `object_id` → [Article](#article).`id` where `content_type_id` is Article "
+        "(generic, `Article.ratings`)"
+    ) in text
+    assert (
+        "- `ratings` ← [Rating](#rating), by `content_type_id` + `object_id` (generic relation)"
+    ) in text
+    assert '    venue_article ||..o{ venue_rating : "(id) - (object_id)"' in er.mermaid(schema)
+    dbml = er.dbml(schema)
+    # No reference, which would read as a foreign key: a note on the key column.
+    assert "Ref venue_rating_object_id_fk" not in dbml
+    assert (
+        "note: 'content_object: with content_type_id, a generic foreign key to a row of any "
+        "model (from Article.ratings)']"
+    ) in table(dbml, "venue_rating")
+    assert 'stroke-dasharray="2 3"' in svg.render(schema)
+
+
+def test_docs_keep_what_was_collected_when_an_add_on_connects(postgresql, monkeypatch):
+    # django-pgtrigger opens a transaction for each trigger it adds, which connects.
+    editor = type(connections[postgresql].schema_editor())
+    create_model = editor.create_model
+
+    def with_a_trigger(self, model):
+        create_model(self, model)
+        self.connection.ensure_connection()
+
+    monkeypatch.setattr(editor, "create_model", with_a_trigger)
+    schema = export.schema_for(postgresql, ROOT, everything=False)
+    sql = markdown.create_sql(schema, names(), postgresql)
+    assert 'CREATE TABLE "venue_event"' in sql
+    assert 'CREATE INDEX "venue_event_code_7025c133" ON "venue_event"' in sql
+    assert "-- Not collected: what is added to these tables needs the database" in sql
+    assert "\n-- Event: " in sql

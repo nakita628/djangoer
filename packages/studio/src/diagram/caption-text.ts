@@ -47,7 +47,9 @@ function relationshipKind(relation: SchemaRelation) {
  * child row when the parent changes.
  */
 export function edgeCaption(relation: SchemaRelation): readonly string[] {
-  const what = [customRelationName(relation), relationshipKind(relation)]
+  // A generic relation says so: no foreign key is behind it, only a content type and a key.
+  const generic = relation.origin === 'generic' ? 'generic' : null
+  const what = [customRelationName(relation), relationshipKind(relation), generic]
     .filter((part) => part !== null)
     .join(' · ')
   const rules = [

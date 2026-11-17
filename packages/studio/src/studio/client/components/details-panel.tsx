@@ -24,6 +24,12 @@ type Model = {
   readonly annotations: readonly string[]
 }
 
+/** What a relation that is not a plain foreign key is, said after it. */
+const ORIGIN_LABELS: ReadonlyMap<RelationOrigin, string> = new Map([
+  ['implicit-many-to-many', 'many-to-many'],
+  ['generic', 'generic'],
+])
+
 type Schema = {
   readonly relations: readonly {
     readonly id: string
@@ -123,8 +129,8 @@ export function DetailsPanel({
               {hasText(relation.onDelete) ? (
                 <span className="text-muted"> · onDelete: {relation.onDelete}</span>
               ) : null}
-              {relation.origin === 'implicit-many-to-many' ? (
-                <span className="text-muted"> · many-to-many</span>
+              {hasText(ORIGIN_LABELS.get(relation.origin)) ? (
+                <span className="text-muted"> · {ORIGIN_LABELS.get(relation.origin)}</span>
               ) : null}
             </div>
           )

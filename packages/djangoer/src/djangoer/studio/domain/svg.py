@@ -391,7 +391,10 @@ def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> li
         parent_y = parent.row_y(column(parent.name, relation["from"]["field"]))
         child_y = child.row_y(column(child.name, relation["to"]["field"]))
         points = router.between(parent, parent_y, child, child_y)
-        dash = ' stroke-dasharray="5 4"' if many_to_many else ""
+        # Dashed: no foreign key backs it. A generic relation in shorter dashes than a
+        # many-to-many, which a table of its own does back.
+        dashes = {"implicit-many-to-many": "5 4", "generic": "2 3"}.get(relation["origin"])
+        dash = f' stroke-dasharray="{dashes}"' if dashes else ""
         parts.append(
             f'<path class="relation-edge" d="{_line(points)}" fill="none" '
             f'stroke="{COLORS["edge"]}" stroke-width="1.4"{dash}/>'
