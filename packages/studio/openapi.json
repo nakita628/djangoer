@@ -3,7 +3,7 @@
   "info": {
     "title": "Djangoer Studio",
     "description": "The API behind Djangoer Studio: the schema, the database, the Django ORM playground and the docs.",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "servers": [
     {
@@ -2882,6 +2882,31 @@
             "type": "array",
             "title": "Fields"
           },
+          "expressions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expressions"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "opclasses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Opclasses"
+          },
           "attribute": {
             "type": "string",
             "title": "Attribute"
@@ -2894,6 +2919,9 @@
           "name",
           "dbName",
           "fields",
+          "expressions",
+          "condition",
+          "opclasses",
           "attribute"
         ],
         "title": "Index"
@@ -3326,6 +3354,16 @@
               }
             ],
             "title": "Onupdate"
+          },
+          "through": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Through"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -3337,7 +3375,8 @@
           "from",
           "to",
           "onDelete",
-          "onUpdate"
+          "onUpdate",
+          "through"
         ],
         "title": "Relation"
       },
@@ -3961,6 +4000,80 @@
         ],
         "title": "TextRange",
         "description": "Character offsets into the text that was sent, end-exclusive."
+      },
+      "Through": {
+        "properties": {
+          "dbName": {
+            "type": "string",
+            "title": "Dbname"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "keyType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keytype"
+          },
+          "fromColumn": {
+            "type": "string",
+            "title": "Fromcolumn"
+          },
+          "fromType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fromtype"
+          },
+          "toColumn": {
+            "type": "string",
+            "title": "Tocolumn"
+          },
+          "toType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totype"
+          },
+          "indexes": {
+            "items": {
+              "$ref": "#/components/schemas/Index"
+            },
+            "type": "array",
+            "title": "Indexes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dbName",
+          "key",
+          "keyType",
+          "fromColumn",
+          "fromType",
+          "toColumn",
+          "toType",
+          "indexes"
+        ],
+        "title": "Through",
+        "description": "The table Django creates for a many-to-many: its key, and a column for each side."
       },
       "UpdateBody": {
         "properties": {

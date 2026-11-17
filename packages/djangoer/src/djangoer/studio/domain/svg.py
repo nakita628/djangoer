@@ -14,7 +14,9 @@ from typing import Any
 
 from .er import column_name, columns
 
+# The narrowest a card is; it widens to its longest line, up to the widest.
 NODE_WIDTH = 340
+MAX_NODE_WIDTH = 640
 HEADER_HEIGHT = 36
 ROW_HEIGHT = 24
 PADDING_BOTTOM = 8
@@ -23,6 +25,21 @@ ROW_GAP = 40
 MARGIN = 40
 # How far a line travels straight out of a card before it bends.
 STUB = 22
+# An enum with more values than this (time zones, countries) shows the first ones and how many
+# are left: the docs list every value, and one card would otherwise set the height of the whole
+# picture. `djangoer er --enum-values` changes it.
+ENUM_ROWS = 12
+# The advance of a character of a monospace font, as a share of its size, and the space kept
+# between the two texts of a line.
+CHAR_WIDTH = 0.62
+TEXT_GAP = 16
+# Where the texts of a card start and end: the name after the PK/FK marker, a margin each side.
+PAD = 12
+NAME_X = 36
+TITLE_SIZE = 13
+SUBTITLE_SIZE = 10.5
+NAME_SIZE = 12
+TYPE_SIZE = 11
 MONO = "ui-monospace, SF Mono, Menlo, Consolas, Liberation Mono, DejaVu Sans Mono, monospace"
 
 COLORS = {
@@ -53,6 +70,8 @@ class Card:
     enum: bool = False
     x: float = 0
     y: float = 0
+    width: float = NODE_WIDTH
+    column: int = 0
 
     @property
     def height(self) -> float:
@@ -66,7 +85,45 @@ class Card:
         return self.y + HEADER_HEIGHT / 2
 
 
-def _cards(schema: dict[str, Any]) -> dict[str, Card]:
+def text_width(text: str, size: float) -> float:
+    return len(text) * size * CHAR_WIDTH
+
+
+def _fit(text: str, size: float, room: float) -> str:
+    """The text, cut to the room there is with an ellipsis when it is longer."""
+    if text_width(text, size) <= room + 0.01:
+        return text
+    keep = max(int(room / (size * CHAR_WIDTH)) - 1, 0)
+    return text[:keep] + "…"
+
+
+def _needed(card: Card) -> float:
+    """How wide a card has to be for its longest line to fit."""
+    header = (
+        PAD
+        + text_width(card.title, TITLE_SIZE)
+        + TEXT_GAP
+        + text_width(card.subtitle, SUBTITLE_SIZE)
+        + PAD
+    )
+    rows = [
+        NAME_X + text_width(name, NAME_SIZE) + TEXT_GAP + text_width(kind, TYPE_SIZE) + PAD
+        for name, kind, _marker in card.rows
+    ]
+    return max([header, *rows])
+
+
+def _enum_rows(values: list[dict[str, Any]], limit: int | None) -> list[tuple[str, str, str]]:
+    """The rows of an enum's card: every value, or as many as `limit` with the last one saying
+    how many more there are. None is no limit."""
+    rows = [(value["name"], value["dbName"] or "", "") for value in values]
+    if limit is None or len(rows) <= limit:
+        return rows
+    shown = rows[: max(limit - 1, 0)]
+    return [*shown, (f"… {len(rows) - len(shown)} more", "", "")]
+
+
+def _cards(schema: dict[str, Any], enum_rows: int | None) -> dict[str, Card]:
     cards: dict[str, Card] = {}
     for model in schema["models"]:
         rows = [
@@ -79,7 +136,7 @@ def _cards(schema: dict[str, Any]) -> dict[str, Card]:
         ]
         cards[model["name"]] = Card(model["name"], model["name"], model["dbName"] or "", rows)
     for enum in schema["enums"]:
-        rows = [(value["name"], value["dbName"] or "", "") for value in enum["values"]]
+        rows = _enum_rows(enum["values"], enum_rows)
         cards[f"enum:{enum['name']}"] = Card(
             f"enum:{enum['name']}", enum["name"], "enum", rows, enum=True
         )
@@ -92,11 +149,13 @@ def _ranks(schema: dict[str, Any], cards: dict[str, Card]) -> dict[str, int]:
     A relation that would close a loop (a model that refers to itself, two that refer to each
     other) is not followed, so every model gets a column.
     """
-    parents: dict[str, set[str]] = {name: set() for name in cards}
+    # The parents of a model in the order of the relations, not of a set: where a loop is cut
+    # depends on which parent is followed first, and a set's order changes from run to run.
+    parents: dict[str, dict[str, None]] = {name: {} for name in cards}
     for relation in schema["relations"]:
         parent, child = relation["from"]["model"], relation["to"]["model"]
         if parent != child and parent in cards and child in cards:
-            parents[child].add(parent)
+            parents[child][parent] = None
     ranks: dict[str, int] = {}
 
     def rank(name: str, seen: frozenset[str]) -> int:
@@ -116,19 +175,26 @@ def _ranks(schema: dict[str, Any], cards: dict[str, Card]) -> dict[str, int]:
     return ranks
 
 
-def layout(schema: dict[str, Any]) -> dict[str, Card]:
-    """Every card with its place: columns left to right, cards of a column top to bottom."""
-    cards = _cards(schema)
+def layout(schema: dict[str, Any], *, enum_rows: int | None = ENUM_ROWS) -> dict[str, Card]:
+    """Every card with its place: columns left to right, cards of a column top to bottom.
+
+    The cards of a column are as wide as the widest of them, so the gaps between columns, where
+    the lines run, are straight.
+    """
+    cards = _cards(schema, enum_rows)
     ranks = _ranks(schema, cards)
     by_rank: dict[int, list[Card]] = {}
     for name, card in cards.items():
         by_rank.setdefault(ranks[name], []).append(card)
+    x = float(MARGIN)
     for index, rank in enumerate(sorted(by_rank)):
+        column = by_rank[rank]
+        width = min(max([NODE_WIDTH, *map(_needed, column)]), MAX_NODE_WIDTH)
         y = float(MARGIN)
-        for card in by_rank[rank]:
-            card.x = MARGIN + index * (NODE_WIDTH + COLUMN_GAP)
-            card.y = y
+        for card in column:
+            card.x, card.y, card.width, card.column = x, y, width, index
             y += card.height + ROW_GAP
+        x += width + COLUMN_GAP
     return cards
 
 
@@ -141,40 +207,66 @@ def _text(
     fill: str,
     anchor: str = "start",
     weight: int = 400,
+    room: float | None = None,
 ) -> str:
+    """A line of text; cut to `room` when it is longer, with the whole of it as its tooltip."""
+    shown = text if room is None else _fit(text, size, room)
+    title = f"<title>{escape(text)}</title>" if shown != text else ""
     return (
         f'<text x="{x:g}" y="{y:g}" font-family="{MONO}" font-size="{size:g}" '
-        f'font-weight="{weight}" text-anchor="{anchor}" fill="{fill}">{escape(text)}</text>'
+        f'font-weight="{weight}" text-anchor="{anchor}" fill="{fill}">{title}{escape(shown)}</text>'
     )
+
+
+def _two(left: str, left_size: float, right: str, right_size: float, room: float):
+    """The room each of two texts on one line gets, None for a text that fits as it is. The
+    right one (a type, a table name) stays whole as long as the left one keeps half the line."""
+    gap = TEXT_GAP if right else 0
+    left_width, right_width = text_width(left, left_size), text_width(right, right_size)
+    if left_width + gap + right_width <= room:
+        return None, None
+    right_room = min(right_width, max(room / 2, room - left_width - gap))
+    return room - right_room - gap, right_room
 
 
 def _card(card: Card, index: int) -> str:
     accent = COLORS["enum"] if card.enum else COLORS["header"]
     clip = f"card-{index}"
+    width = card.width
+    title_room, subtitle_room = _two(
+        card.title, TITLE_SIZE, card.subtitle, SUBTITLE_SIZE, width - 2 * PAD
+    )
     parts = [
         f'<g class="{"enum-node" if card.enum else "model-node"}">',
         (
-            f'<clipPath id="{clip}"><rect x="{card.x:g}" y="{card.y:g}" width="{NODE_WIDTH}" '
+            f'<clipPath id="{clip}"><rect x="{card.x:g}" y="{card.y:g}" width="{width:g}" '
             f'height="{card.height:g}" rx="8"/></clipPath>'
         ),
         (
-            f'<rect x="{card.x:g}" y="{card.y:g}" width="{NODE_WIDTH}" height="{card.height:g}" rx="8" '
+            f'<rect x="{card.x:g}" y="{card.y:g}" width="{width:g}" height="{card.height:g}" rx="8" '
             f'fill="{COLORS["card"]}" stroke="{COLORS["border"]}" filter="url(#shadow)"/>'
         ),
         (
-            f'<rect x="{card.x:g}" y="{card.y:g}" width="{NODE_WIDTH}" height="{HEADER_HEIGHT}" '
+            f'<rect x="{card.x:g}" y="{card.y:g}" width="{width:g}" height="{HEADER_HEIGHT}" '
             f'fill="{accent}" clip-path="url(#{clip})"/>'
         ),
         _text(
-            card.x + 12, card.y + 23, card.title, size=13, fill=COLORS["header_text"], weight=700
+            card.x + PAD,
+            card.y + 23,
+            card.title,
+            size=TITLE_SIZE,
+            fill=COLORS["header_text"],
+            weight=700,
+            room=title_room,
         ),
         _text(
-            card.x + NODE_WIDTH - 12,
+            card.x + width - PAD,
             card.y + 23,
             card.subtitle,
-            size=10.5,
+            size=SUBTITLE_SIZE,
             fill=COLORS["table_name"],
             anchor="end",
+            room=subtitle_room,
         ),
     ]
     for row, (name, kind, marker) in enumerate(card.rows):
@@ -182,9 +274,20 @@ def _card(card: Card, index: int) -> str:
         if marker:
             fill = COLORS["key"] if marker == "PK" else COLORS["foreign"]
             parts.append(_text(card.x + 12, y, marker, size=9, fill=fill, weight=700))
-        parts.append(_text(card.x + 36, y, name, size=12, fill=COLORS["text"]))
+        name_room, kind_room = _two(name, NAME_SIZE, kind, TYPE_SIZE, width - NAME_X - PAD)
         parts.append(
-            _text(card.x + NODE_WIDTH - 12, y, kind, size=11, fill=COLORS["type"], anchor="end")
+            _text(card.x + NAME_X, y, name, size=NAME_SIZE, fill=COLORS["text"], room=name_room)
+        )
+        parts.append(
+            _text(
+                card.x + width - PAD,
+                y,
+                kind,
+                size=TYPE_SIZE,
+                fill=COLORS["type"],
+                anchor="end",
+                room=kind_room,
+            )
         )
     parts.append("</g>")
     return "".join(parts)
@@ -222,9 +325,8 @@ class Router:
         return self.top - LANE * self.tracks - 4
 
     def between(self, source: Card, source_y: float, target: Card, target_y: float):
-        start = (source.x + NODE_WIDTH, source_y)
-        step = NODE_WIDTH + COLUMN_GAP
-        distance = round((target.x - source.x) / step)
+        start = (source.x + source.width, source_y)
+        distance = target.column - source.column
         if distance == 1:
             middle = self._gap(start[0])
             return [start, (middle, start[1]), (middle, target_y), (target.x, target_y)]
@@ -242,8 +344,9 @@ class Router:
                 (target.x, target_y),
             ]
         # The same column, or one to the left: out to the right, and in from the right as well.
-        out = self._gap(max(source.x, target.x) + NODE_WIDTH)
-        return [start, (out, start[1]), (out, target_y), (target.x + NODE_WIDTH, target_y)]
+        right = max(source.x + source.width, target.x + target.width)
+        out = self._gap(right)
+        return [start, (out, start[1]), (out, target_y), (target.x + target.width, target_y)]
 
 
 def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> list[str]:
@@ -294,15 +397,15 @@ def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> li
     return parts
 
 
-def render(schema: dict[str, Any]) -> str:
+def render(schema: dict[str, Any], *, enum_rows: int | None = ENUM_ROWS) -> str:
     """The diagram of a schema as one SVG document."""
-    cards = layout(schema)
+    cards = layout(schema, enum_rows=enum_rows)
     router = Router(cards)
     edges = _edges(schema, cards, router)
     # The tracks above the cards and the lanes right of the last column are part of the picture.
     top = MARGIN + LANE * router.tracks
     right = max((lanes * LANE for lanes in router.gaps.values()), default=0) + STUB
-    width = max((card.x + NODE_WIDTH for card in cards.values()), default=0) + MARGIN + right
+    width = max((card.x + card.width for card in cards.values()), default=0) + MARGIN + right
     height = max((card.y + card.height for card in cards.values()), default=0) + MARGIN + top
     parts = [
         (
