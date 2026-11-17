@@ -268,7 +268,15 @@ def _directives(model: dict[str, Any]) -> list[dict[str, Any]]:
             out.append({"name": name, "values": [value]})
     for index in model["indexes"]:
         out.append(
-            {"name": "unique" if index["type"] == "unique" else "index", "values": index["fields"]}
+            {
+                "name": "unique" if index["type"] == "unique" else "index",
+                "values": [
+                    *index["fields"],
+                    *index["expressions"],
+                    *index["opclasses"],
+                    *([f"where {index['condition']}"] if index["condition"] else []),
+                ],
+            }
         )
     return out
 

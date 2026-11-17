@@ -151,6 +151,25 @@ def add_export_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="include the models of installed packages (django.contrib.auth, …), not only the project's own",
     )
+    parser.add_argument(
+        "--enum-values",
+        type=_count,
+        default=12,
+        metavar="N",
+        help="how many values an enum shows in the SVG and PNG diagram, 0 for all (default: 12)",
+    )
+
+
+def _count(text: str) -> int:
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"{text} is not 0 or more")
+    return value
+
+
+def enum_rows(options: argparse.Namespace) -> int | None:
+    """The `--enum-values` of a command as the diagram takes it: None for every value."""
+    return options.enum_values or None
 
 
 def load_project(options: argparse.Namespace) -> bool:
@@ -182,17 +201,25 @@ def write_er(options: argparse.Namespace) -> int:
     from returns.result import Failure, Success
 
     django.setup()
-    from .studio.domain import export
+    from .studio.domain import er, export
 
     schema = export.schema_for(options.database, Path.cwd(), everything=options.all)
     failed = False
     for output in options.output:
         target = Path(output)
-        match export.render_er(schema, target.suffix):
+        match export.render_er(schema, target.suffix, enum_rows=enum_rows(options)):
             case Success(content):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
                 _print(f"wrote {target}")
+                size = len(content.decode())
+                if target.suffix.lower() == ".md" and size > er.MERMAID_LIMIT:
+                    print(
+                        f"djangoer: {target}: {size:,} characters, more than the "
+                        f"{er.MERMAID_LIMIT:,} Mermaid draws (GitHub too); an .svg is drawn "
+                        "whatever its size",
+                        file=sys.stderr,
+                    )
             case Failure(error):
                 print(f"djangoer: {target}: {error}", file=sys.stderr)
                 failed = True
@@ -209,7 +236,8 @@ def write_docs(options: argparse.Namespace) -> int:
     schema = export.schema_for(options.database, Path.cwd(), everything=options.all)
     directory = Path(options.output)
     directory.mkdir(parents=True, exist_ok=True)
-    for name, content in export.render_docs(options.database, schema).items():
+    files = export.render_docs(options.database, schema, enum_rows=enum_rows(options))
+    for name, content in files.items():
         (directory / name).write_bytes(content)
         _print(f"wrote {directory / name}")
     return 0

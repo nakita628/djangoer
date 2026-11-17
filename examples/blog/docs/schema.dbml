@@ -1,7 +1,7 @@
 Enum PostStatus {
-  draft
-  published
-  archived
+  "draft"
+  "published"
+  "archived"
 }
 
 Table blog_author {
@@ -35,6 +35,8 @@ Table blog_post {
   updated_at datetime [default: `now()`, not null]
 
   indexes {
+    (author_id) [name: 'blog_post_author_id_dd7a8485']
+    (slug) [name: 'blog_post_slug_b95473f2']
     (author_id, slug) [unique, name: 'post_author_slug_unique']
     (status, published_at) [name: 'post_status_published']
   }
@@ -50,11 +52,31 @@ Table blog_comment {
   text text [not null]
   approved bool [default: false, not null]
   created_at datetime [default: `now()`, not null]
+
+  indexes {
+    (post_id) [name: 'blog_comment_post_id_580e96ef']
+    (author_id) [name: 'blog_comment_author_id_4f11e2e0']
+    (parent_id) [name: 'blog_comment_parent_id_f2a027bb']
+  }
 }
 
 Ref blog_post_author_id_fk: blog_post.author_id > blog_author.id [delete: cascade]
 
-Ref: blog_tag.id <> blog_post.id
+Table blog_post_tags {
+  id integer [pk, increment]
+  post_id bigint [not null]
+  tag_id bigint [not null]
+
+  indexes {
+    (post_id) [name: 'blog_post_tags_post_id_a1c71c8a']
+    (tag_id) [name: 'blog_post_tags_tag_id_0875c551']
+    (post_id, tag_id) [unique, name: 'blog_post_tags_post_id_tag_id_4925ec37_uniq']
+  }
+}
+
+Ref blog_post_tags_post_id_fk: blog_post_tags.post_id > blog_post.id [delete: cascade]
+
+Ref blog_post_tags_tag_id_fk: blog_post_tags.tag_id > blog_tag.id [delete: cascade]
 
 Ref blog_comment_post_id_fk: blog_comment.post_id > blog_post.id [delete: cascade]
 

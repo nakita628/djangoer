@@ -17,6 +17,24 @@ CREATE TABLE "blog_post" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "auth
 CREATE TABLE "blog_post_tags" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "post_id" bigint NOT NULL REFERENCES "blog_post" ("id") DEFERRABLE INITIALLY DEFERRED, "tag_id" bigint NOT NULL REFERENCES "blog_tag" ("id") DEFERRABLE INITIALLY DEFERRED);
 
 CREATE TABLE "blog_comment" ("id" integer NOT NULL PRIMARY KEY AUTOINCREMENT, "post_id" bigint NOT NULL REFERENCES "blog_post" ("id") DEFERRABLE INITIALLY DEFERRED, "author_id" bigint NULL REFERENCES "blog_author" ("id") DEFERRABLE INITIALLY DEFERRED, "parent_id" bigint NULL REFERENCES "blog_comment" ("id") DEFERRABLE INITIALLY DEFERRED, "text" text NOT NULL, "approved" bool NOT NULL, "created_at" datetime NOT NULL);
+
+CREATE INDEX "blog_post_author_id_dd7a8485" ON "blog_post" ("author_id");
+
+CREATE INDEX "blog_post_slug_b95473f2" ON "blog_post" ("slug");
+
+CREATE INDEX "post_status_published" ON "blog_post" ("status", "published_at");
+
+CREATE UNIQUE INDEX "blog_post_tags_post_id_tag_id_4925ec37_uniq" ON "blog_post_tags" ("post_id", "tag_id");
+
+CREATE INDEX "blog_post_tags_post_id_a1c71c8a" ON "blog_post_tags" ("post_id");
+
+CREATE INDEX "blog_post_tags_tag_id_0875c551" ON "blog_post_tags" ("tag_id");
+
+CREATE INDEX "blog_comment_post_id_580e96ef" ON "blog_comment" ("post_id");
+
+CREATE INDEX "blog_comment_author_id_4f11e2e0" ON "blog_comment" ("author_id");
+
+CREATE INDEX "blog_comment_parent_id_f2a027bb" ON "blog_comment" ("parent_id");
 ```
 
 </details>
@@ -77,6 +95,8 @@ An article, a draft until it is published.
 
 Indexes:
 
+- index `blog_post_author_id_dd7a8485` on `author_id`
+- index `blog_post_slug_b95473f2` on `slug`
 - unique `post_author_slug_unique` on `author_id`, `slug`
 - index `post_status_published` on `status`, `published_at`
 
@@ -99,6 +119,12 @@ Table `blog_comment`, app `blog`.
 | `text` | `TextField` | `text` |  |  |  |  |
 | `approved` | `BooleanField` | `bool` |  |  | `False` |  |
 | `created_at` | `DateTimeField` | `datetime` |  |  | `now()` |  |
+
+Indexes:
+
+- index `blog_comment_post_id_580e96ef` on `post_id`
+- index `blog_comment_author_id_4f11e2e0` on `author_id`
+- index `blog_comment_parent_id_f2a027bb` on `parent_id`
 
 Relations:
 

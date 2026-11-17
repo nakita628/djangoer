@@ -29,6 +29,7 @@ dev = [
   "import-linter>=2.15",
   "pyright>=1.1.400",
   "jedi>=0.19",
+  "psycopg[binary]>=3.2",
 ]
 
 [tool.pytest.ini_options]

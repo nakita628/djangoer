@@ -83,6 +83,12 @@ class Index(Contract):
     name: str | None
     db_name: str | None
     fields: list[str]
+    # What an index on expressions indexes beside its fields, as SQL: `LOWER("email")`.
+    expressions: list[str]
+    # The `WHERE` of a partial index, as SQL: `"primary" = 1`.
+    condition: str | None
+    # The operator class of each column, where one is named: `varchar_pattern_ops`.
+    opclasses: list[str]
     attribute: str
 
 
@@ -118,6 +124,19 @@ class RelationEnd(Contract):
     cardinality: Cardinality
 
 
+class Through(Contract):
+    """The table Django creates for a many-to-many: its key, and a column for each side."""
+
+    db_name: str
+    key: str
+    key_type: str | None
+    from_column: str
+    from_type: str | None
+    to_column: str
+    to_type: str | None
+    indexes: list[Index]
+
+
 class Relation(Contract):
     id: str
     name: str | None
@@ -127,6 +146,8 @@ class Relation(Contract):
     to: RelationEnd
     on_delete: str | None
     on_update: str | None
+    # The table that joins the two, for a many-to-many with no through model of its own.
+    through: Through | None
 
 
 class Schema(Contract):

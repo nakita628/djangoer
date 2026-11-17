@@ -34,6 +34,9 @@ type Index = {
   name: string | null
   dbName: string | null
   fields: string[]
+  expressions: string[]
+  condition: string | null
+  opclasses: string[]
   attribute: string
 }
 type Location = { file: string; line: number }
@@ -62,6 +65,16 @@ type RelationEnd = {
   field: string
   cardinality: 'zero-one' | 'one' | 'zero-many' | 'many'
 }
+type Through = {
+  dbName: string
+  key: string
+  keyType: string | null
+  fromColumn: string
+  fromType: string | null
+  toColumn: string
+  toType: string | null
+  indexes: Index[]
+}
 type Relation = {
   id: string
   name: string | null
@@ -70,6 +83,7 @@ type Relation = {
   to: RelationEnd
   onDelete: string | null
   onUpdate: string | null
+  through: Through | null
 }
 type Schema = {
   files: SchemaFile[]

@@ -6,7 +6,7 @@ from typing import Any
 
 from django.db import connections
 
-from .er import column_name, columns, mermaid
+from .er import MERMAID_LIMIT, column_name, columns, mermaid
 from .schema import Names
 
 ACTIONS = {"CASCADE": "cascade", "SET_NULL": "set null", "PROTECT": "protect"}
@@ -14,15 +14,18 @@ ACTIONS = {"CASCADE": "cascade", "SET_NULL": "set null", "PROTECT": "protect"}
 
 def create_sql(schema: dict[str, Any], known: Names, alias: str) -> str:
     """`CREATE TABLE` and the indexes of every model of the schema, as Django would write them
-    for this database. Nothing is run: the statements are collected, not sent."""
+    for this database. Nothing is run: the statements are collected, not sent.
+
+    The indexes, and on most backends the foreign keys, are deferred: the editor collects them
+    as the `with` ends, so the statements are read after it.
+    """
     connection = connections[alias]
-    statements: list[str] = []
     with connection.schema_editor(collect_sql=True) as editor:
         for model in schema["models"]:
             cls = known.get(model["name"])
             if cls is not None and cls._meta.managed:
                 editor.create_model(cls)
-        statements = [str(statement) for statement in editor.collected_sql]
+    statements = [str(statement) for statement in editor.collected_sql]
     return "\n\n".join(
         statement for statement in statements if not statement.lstrip().startswith("--")
     )
@@ -80,6 +83,17 @@ def _key_name(model: dict[str, Any], name: str) -> str:
     return next((column_name(f) for f in model["fields"] if f["name"] == name), name)
 
 
+def _index(index: dict[str, Any]) -> str:
+    """`- unique `name` on `a`, `lower("b")` where `"primary" = 1``."""
+    kind = "unique" if index["type"] == "unique" else "index"
+    name = f" `{index['name']}`" if index["name"] else ""
+    keys = [*index["fields"], *index["expressions"]]
+    where = f" where {_code(index['condition'])}" if index["condition"] else ""
+    opclasses = ", ".join(_code(opclass) for opclass in index["opclasses"])
+    using = f" ({opclasses})" if opclasses else ""
+    return f"- {kind}{name} on {', '.join(_code(key) for key in keys)}{using}{where}"
+
+
 def _model(model: dict[str, Any], schema: dict[str, Any]) -> list[str]:
     lines = [f"## {model['name']}", "", f"Table `{model['dbName']}`, app `{model['app']}`."]
     if model["documentation"]:
@@ -107,12 +121,7 @@ def _model(model: dict[str, Any], schema: dict[str, Any]) -> list[str]:
         )
     if model["indexes"]:
         lines += ["", "Indexes:", ""]
-        for index in model["indexes"]:
-            kind = "unique" if index["type"] == "unique" else "index"
-            name = f" `{index['name']}`" if index["name"] else ""
-            lines.append(
-                f"- {kind}{name} on {', '.join(f'`{field}`' for field in index['fields'])}"
-            )
+        lines += [_index(index) for index in model["indexes"]]
     relations = _relations(model, schema)
     if relations:
         lines += ["", "Relations:", "", *relations]
@@ -125,6 +134,19 @@ def _enum(enum: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _mermaid_block(text: str) -> list[str]:
+    """The diagram as a Mermaid block, or, past what Mermaid draws, why it is not there: an error
+    box in its place would say less."""
+    if len(text) <= MERMAID_LIMIT:
+        return ["```mermaid", text.rstrip("\n"), "```"]
+    note = (
+        f"> The diagram is {len(text):,} characters of Mermaid, more than the {MERMAID_LIMIT:,} "
+        "it draws (GitHub too). Write it as a picture instead: `djangoer er -o er.svg`, or "
+        "`djangoer docs`, whose README shows the SVG."
+    )
+    return [note]
+
+
 def render(schema: dict[str, Any], *, sql: str, diagram: str | None) -> str:
     """The docs of a schema, as one Markdown document.
 
@@ -135,7 +157,7 @@ def render(schema: dict[str, Any], *, sql: str, diagram: str | None) -> str:
     if diagram is not None:
         lines += [f"![ER diagram]({diagram})", ""]
     else:
-        lines += ["```mermaid", mermaid(schema).rstrip("\n"), "```", ""]
+        lines += [*_mermaid_block(mermaid(schema)), ""]
     names = [model["name"] for model in schema["models"]]
     lines += [" · ".join(f"[{name}](#{name.lower()})" for name in names), ""]
     if sql:

@@ -16,9 +16,12 @@ from pathlib import Path
 from typing import Any
 
 from django.apps import apps
+from django.core.exceptions import FieldDoesNotExist
 from django.db import connections, models
+from django.db.models import F, Q
 from django.db.models.fields import NOT_PROVIDED
 from django.db.models.fields.related import ForeignObjectRel
+from django.db.models.sql import Query
 
 
 def _site_roots() -> list[Path]:
@@ -259,43 +262,186 @@ def _relation_name(field: models.Field) -> str | None:
     return related_name if related_name and not related_name.endswith("+") else None
 
 
-def _indexes(model: type[models.Model]) -> list[dict[str, Any]]:
-    meta = model._meta
+def _sql(model: type[models.Model], alias: str, build) -> str | None:
+    """A piece of SQL Django writes for a model on this database (an expression, a condition),
+    with its parameters in place. None when the connection cannot write it."""
+    try:
+        connection = connections[alias]
+        editor = connection.schema_editor()
+        query = Query(model, alias_cols=False)
+        sql, params = build(query, query.get_compiler(connection=connection), connection)
+        return sql % tuple(editor.quote_value(param) for param in params)
+    except Exception:  # noqa: BLE001 - a backend that cannot compile it offline
+        return None
+
+
+def _expressions(
+    model: type[models.Model], expressions: tuple[Any, ...], alias: str
+) -> tuple[list[str], list[str]]:
+    """The fields and the expressions of an index declared with positional expressions.
+
+    A bare field (`BrinIndex("last_seen")`) is a column like any other; anything else
+    (`Lower("email")`) is written as the SQL it compiles to, or as Django writes it.
+    """
+    fields: list[str] = []
+    out: list[str] = []
+    for expression in expressions:
+        if isinstance(expression, F):
+            try:
+                fields.append(model._meta.get_field(expression.name).attname)
+                continue
+            except FieldDoesNotExist:
+                pass
+        sql = _sql(
+            model,
+            alias,
+            lambda query, compiler, _connection, e=expression: compiler.compile(
+                e.resolve_expression(query)
+            ),
+        )
+        out.append(sql or str(expression))
+    return fields, out
+
+
+def _condition(model: type[models.Model], condition: Q | None, alias: str) -> str | None:
+    """The `WHERE` of a partial index, as SQL."""
+    if condition is None:
+        return None
+    sql = _sql(
+        model,
+        alias,
+        lambda query, compiler, connection: query.build_where(condition).as_sql(
+            compiler, connection
+        ),
+    )
+    return sql or str(condition)
+
+
+def _editor(alias: str):
+    """A schema editor of the database, to ask what it would create. It is never entered, so it
+    runs nothing and needs no connection open."""
+    try:
+        return connections[alias].schema_editor()
+    except Exception:  # noqa: BLE001 - no editor without a usable backend
+        return None
+
+
+def _unquoted(name: str, alias: str) -> str:
+    quote = connections[alias].ops.quote_name("x")[0]
+    return name[1:-1] if len(name) > 1 and name[0] == quote and name[-1] == quote else name
+
+
+def _field_indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]]:
+    """The indexes the database creates for single columns, as its schema editor says: one for
+    `db_index=True` and for every foreign key unless it says `db_index=False` (a unique column
+    has its unique index already), and on PostgreSQL the `_like` index of a text column that is
+    indexed or unique."""
+    editor = _editor(alias)
+    if editor is None:
+        return []
     out: list[dict[str, Any]] = []
+    for field in model._meta.local_concrete_fields:
+        try:
+            statements = editor._field_indexes_sql(model, field)
+        except Exception:  # noqa: BLE001, S112 - a field the backend cannot index offline
+            continue
+        for statement in statements:
+            name = _unquoted(str(statement.parts["name"]), alias)
+            opclasses = list(getattr(statement.parts.get("columns"), "opclasses", None) or [])
+            declared = type(field).__name__ if field.is_relation else "db_index=True"
+            if opclasses:
+                declared = f"{', '.join(opclasses)} for LIKE"
+            out.append(
+                {
+                    "type": "normal",
+                    "name": name,
+                    "dbName": name,
+                    "fields": [field.attname],
+                    "expressions": [],
+                    "condition": None,
+                    "opclasses": opclasses,
+                    "attribute": f"{field.name}: {declared}",
+                }
+            )
+    return out
+
+
+def _unique_together_name(model: type[models.Model], columns: list[str], alias: str):
+    """The name Django gives the index of a `unique_together`: `orders_a_b_c7cdc6f9_uniq`."""
+    editor = _editor(alias)
+    if editor is None:
+        return None
+    try:
+        return editor._create_index_name(model._meta.db_table, columns, suffix="_uniq")
+    except Exception:  # noqa: BLE001 - no name without a usable backend
+        return None
+
+
+def _indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]]:
+    meta = model._meta
+    out = _field_indexes(model, alias)
     for group in meta.unique_together:
         fields = [meta.get_field(name).attname for name in group]
+        name = _unique_together_name(model, [meta.get_field(name).column for name in group], alias)
         out.append(
             {
                 "type": "unique",
-                "name": None,
-                "dbName": None,
+                "name": name,
+                "dbName": name,
                 "fields": fields,
+                "expressions": [],
+                "condition": None,
+                "opclasses": [],
                 "attribute": f"unique_together = {tuple(group)!r}",
             }
         )
     for constraint in meta.constraints:
-        if isinstance(constraint, models.UniqueConstraint) and constraint.fields:
-            out.append(
-                {
-                    "type": "unique",
-                    "name": constraint.name,
-                    "dbName": constraint.name,
-                    "fields": [meta.get_field(name).attname for name in constraint.fields],
-                    "attribute": (
-                        f"UniqueConstraint(fields={list(constraint.fields)!r}, "
-                        f"name={constraint.name!r})"
-                    ),
-                }
-            )
+        if not isinstance(constraint, models.UniqueConstraint):
+            continue
+        fields, expressions = _expressions(model, constraint.expressions, alias)
+        fields += [meta.get_field(name).attname for name in constraint.fields]
+        condition = _condition(model, constraint.condition, alias)
+        declared = [*map(str, constraint.expressions)]
+        if constraint.fields:
+            declared.append(f"fields={list(constraint.fields)!r}")
+        if constraint.condition is not None:
+            declared.append(f"condition={constraint.condition!r}")
+        if constraint.opclasses:
+            declared.append(f"opclasses={list(constraint.opclasses)!r}")
+        declared.append(f"name={constraint.name!r}")
+        out.append(
+            {
+                "type": "unique",
+                "name": constraint.name,
+                "dbName": constraint.name,
+                "fields": fields,
+                "expressions": expressions,
+                "condition": condition,
+                "opclasses": list(constraint.opclasses),
+                "attribute": f"UniqueConstraint({', '.join(declared)})",
+            }
+        )
     for index in meta.indexes:
-        fields = [name.lstrip("-") for name in index.fields]
+        fields, expressions = _expressions(model, index.expressions, alias)
+        fields += [meta.get_field(name.lstrip("-")).attname for name in index.fields]
+        declared = [*map(str, index.expressions)]
+        if index.fields:
+            declared.append(f"fields={list(index.fields)!r}")
+        if index.condition is not None:
+            declared.append(f"condition={index.condition!r}")
+        if index.opclasses:
+            declared.append(f"opclasses={list(index.opclasses)!r}")
+        declared.append(f"name={index.name!r}")
         out.append(
             {
                 "type": "normal",
                 "name": index.name,
                 "dbName": index.name,
-                "fields": [meta.get_field(name).attname for name in fields],
-                "attribute": f"Index(fields={list(index.fields)!r}, name={index.name!r})",
+                "fields": fields,
+                "expressions": expressions,
+                "condition": _condition(model, index.condition, alias),
+                "opclasses": list(index.opclasses),
+                "attribute": f"{type(index).__name__}({', '.join(declared)})",
             }
         )
     return out
@@ -416,14 +562,16 @@ def build_model(
         "annotations": [],
         "fields": fields,
         "primaryKey": key if len(key) > 1 else None,
-        "indexes": _indexes(model),
+        "indexes": _indexes(model, alias),
         "attributes": _meta_attributes(model),
         # Where the class is written, when it is the project's: the source page opens there.
         "location": _location(model, root) if _in_project(_source_file(model), root) else None,
     }
 
 
-def build_relations(model_list: list[type[models.Model]], known: Names) -> list[dict[str, Any]]:
+def build_relations(
+    model_list: list[type[models.Model]], known: Names, alias: str
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for model in model_list:
         child = known.of(model)
@@ -446,6 +594,7 @@ def build_relations(model_list: list[type[models.Model]], known: Names) -> list[
                         "to": {"model": other, "field": inverse, "cardinality": "zero-many"},
                         "onDelete": None,
                         "onUpdate": None,
+                        "through": _through(field, alias),
                     }
                 )
                 continue
@@ -475,9 +624,29 @@ def build_relations(model_list: list[type[models.Model]], known: Names) -> list[
                     },
                     "onDelete": getattr(on_delete, "__name__", None),
                     "onUpdate": None,
+                    "through": None,
                 }
             )
     return out
+
+
+def _through(field: models.ManyToManyField, alias: str) -> dict[str, Any]:
+    """The table Django creates for a many-to-many: its key, a column for each side, and the
+    indexes it has (one per column, and the pair unique)."""
+    through = field.remote_field.through
+    meta = through._meta
+    source = meta.get_field(field.m2m_field_name())
+    target = meta.get_field(field.m2m_reverse_field_name())
+    return {
+        "dbName": meta.db_table,
+        "key": meta.pk.column,
+        "keyType": _native_type(meta.pk, alias),
+        "fromColumn": source.column,
+        "fromType": _native_type(source, alias),
+        "toColumn": target.column,
+        "toType": _native_type(target, alias),
+        "indexes": _indexes(through, alias),
+    }
 
 
 def _in_project(file: str | None, root: Path) -> bool:
@@ -530,7 +699,7 @@ def build_schema(alias: str = "default", root: Path | None = None) -> dict[str, 
         "provider": connections[alias].vendor if alias in connections else None,
         "models": built,
         "enums": list(enums.values()),
-        "relations": build_relations(model_list, known),
+        "relations": build_relations(model_list, known, alias),
     }
 
 

@@ -36,8 +36,11 @@ def png(document: str) -> Result[bytes, ExportError]:
     return Success(bytes(resvg.svg_to_bytes(svg_string=document)))
 
 
-def render_er(schema: dict[str, Any], suffix: str) -> Result[bytes, ExportError]:
-    """The ER diagram of a schema in the format of a file extension."""
+def render_er(
+    schema: dict[str, Any], suffix: str, *, enum_rows: int | None = svg.ENUM_ROWS
+) -> Result[bytes, ExportError]:
+    """The ER diagram of a schema in the format of a file extension. `enum_rows` is how many
+    values an enum's card shows in the SVG and the PNG, None for all of them."""
     match suffix.lower():
         case ".md":
             text = f"```mermaid\n{er.mermaid(schema)}```\n"
@@ -45,9 +48,9 @@ def render_er(schema: dict[str, Any], suffix: str) -> Result[bytes, ExportError]
         case ".dbml":
             return Success(er.dbml(schema).encode())
         case ".svg":
-            return Success(svg.render(schema).encode())
+            return Success(svg.render(schema, enum_rows=enum_rows).encode())
         case ".png":
-            return png(svg.render(schema))
+            return png(svg.render(schema, enum_rows=enum_rows))
         case other:
             wanted = ", ".join(FORMATS)
             return Failure(
@@ -55,12 +58,14 @@ def render_er(schema: dict[str, Any], suffix: str) -> Result[bytes, ExportError]
             )
 
 
-def render_docs(alias: str, schema: dict[str, Any]) -> dict[str, bytes]:
+def render_docs(
+    alias: str, schema: dict[str, Any], *, enum_rows: int | None = svg.ENUM_ROWS
+) -> dict[str, bytes]:
     """The docs of a schema as the files of a directory: README.md and the diagram it shows."""
     sql = markdown.create_sql(schema, names(), alias)
     return {
         "README.md": markdown.render(schema, sql=sql, diagram="er.svg").encode(),
-        "er.svg": svg.render(schema).encode(),
+        "er.svg": svg.render(schema, enum_rows=enum_rows).encode(),
     }
 
 
