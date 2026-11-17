@@ -16,16 +16,21 @@ def create_sql(schema: dict[str, Any], known: Names, alias: str) -> str:
     """`CREATE TABLE` and the indexes of every model of the schema, as Django would write them
     for this database. Nothing is run: the statements are collected, not sent.
 
-    The indexes, and on most backends the foreign keys, are deferred: the editor collects them
-    as the `with` ends, so the statements are read after it.
+    The indexes, and on most backends the foreign keys, are deferred: the editor keeps them to
+    run as the `with` ends. They are taken from it before that, as Django 4.2 composes each of
+    them on PostgreSQL with a cursor, which connects. Not atomic either: on a backend that can
+    roll back DDL (PostgreSQL) the transaction would connect too. The docs need no database.
     """
     connection = connections[alias]
-    with connection.schema_editor(collect_sql=True) as editor:
+    with connection.schema_editor(collect_sql=True, atomic=False) as editor:
         for model in schema["models"]:
             cls = known.get(model["name"])
             if cls is not None and cls._meta.managed:
                 editor.create_model(cls)
+        deferred = [str(statement) for statement in editor.deferred_sql]
+        editor.deferred_sql.clear()
     statements = [str(statement) for statement in editor.collected_sql]
+    statements += [s if s.rstrip().endswith(";") else f"{s};" for s in deferred]
     return "\n\n".join(
         statement for statement in statements if not statement.lstrip().startswith("--")
     )

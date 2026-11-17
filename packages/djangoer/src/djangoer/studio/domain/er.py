@@ -133,13 +133,27 @@ def _dbml_quoted(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _dbml_enum_value(value: dict[str, Any]) -> str:
-    """A value of an enum, as it is stored. DBML has no name for the empty string, so that one
-    is a comment: still there to read, and no error to the parser."""
-    stored = value["name"] if value["dbName"] is None else value["dbName"]
-    if stored == "":
-        return f'  // "" ({value["name"]}): the empty string, which DBML cannot name'
-    return f"  {_dbml_quoted(stored)}"
+def _dbml_enum_values(values: list[dict[str, Any]]) -> list[str]:
+    """The values of an enum, as they are stored, each once.
+
+    Choices may share a stored value under several labels (`mysql` for MySQL and for MariaDB),
+    which DBML takes as the same value twice: it is written once, with its labels in a note.
+    DBML has no name for the empty string, so that one is a comment: still there to read, and
+    no error to the parser.
+    """
+    labels: dict[str, list[str]] = {}
+    for value in values:
+        stored = value["name"] if value["dbName"] is None else value["dbName"]
+        labels.setdefault(stored, []).append(value["name"])
+    lines = []
+    for stored, names in labels.items():
+        if stored == "":
+            lines.append(f'  // "" ({" / ".join(names)}): the empty string, which DBML cannot name')
+        elif len(names) > 1:
+            lines.append(f"  {_dbml_quoted(stored)} [note: {_dbml_string(' / '.join(names))}]")
+        else:
+            lines.append(f"  {_dbml_quoted(stored)}")
+    return lines
 
 
 def _dbml_index(model: dict[str, Any], index: dict[str, Any]) -> str:
@@ -227,7 +241,7 @@ def dbml(schema: dict[str, Any]) -> str:
     tables = _tables(schema)
     blocks: list[str] = []
     for enum in schema["enums"]:
-        values = "\n".join(_dbml_enum_value(value) for value in enum["values"])
+        values = "\n".join(_dbml_enum_values(enum["values"]))
         blocks.append(f"Enum {enum['name']} {{\n{values}\n}}")
     for model in schema["models"]:
         lines = [f"Table {model['dbName']} {{"]

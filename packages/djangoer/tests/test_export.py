@@ -60,6 +60,10 @@ def test_an_export_covers_the_projects_own_models_unless_asked_for_all():
         "Organizer",
         "Event",
         "PageViewRestriction",
+        "Tag",
+        "Place",
+        "Restaurant",
+        "Connection",
     ]
     everything = export.schema_for("default", ROOT, everything=True)
     assert "User" in [model["name"] for model in everything["models"]]
@@ -135,6 +139,7 @@ def test_the_commands_write_the_files(tmp_path, capsys):
         database="default",
         all=False,
         enum_values=12,
+        enums=True,
         output=[
             str(tmp_path / "er.md"),
             str(tmp_path / "out" / "schema.dbml"),
@@ -147,7 +152,9 @@ def test_the_commands_write_the_files(tmp_path, capsys):
     assert (tmp_path / "out" / "schema.dbml").is_file()
     assert not (tmp_path / "er.gif").exists()
     assert 'No ER format for ".gif"' in capsys.readouterr().err
-    docs = Namespace(database="default", all=False, enum_values=12, output=str(tmp_path / "docs"))
+    docs = Namespace(
+        database="default", all=False, enum_values=12, enums=True, output=str(tmp_path / "docs")
+    )
     assert cli.write_docs(docs) == 0
     assert (tmp_path / "docs" / "README.md").is_file()
     assert (tmp_path / "docs" / "er.svg").is_file()
@@ -372,3 +379,83 @@ def test_a_mermaid_diagram_too_long_to_draw_says_so(tmp_path, capsys, monkeypatc
     assert "more than the 100 it draws" in text
     assert cli.main(["er", "-o", str(tmp_path / "er.md")]) == 0
     assert "more than the 100 Mermaid draws" in capsys.readouterr().err
+
+
+def test_a_child_of_multi_table_inheritance_has_its_own_columns_only():
+    restaurant = next(m for m in venue()["models"] if m["name"] == "Restaurant")
+    assert [f["name"] for f in restaurant["fields"]] == [
+        "place_ptr_id",
+        "place_ptr",
+        "serves_pizza",
+    ]
+    assert restaurant["fields"][0]["isId"] is True
+    text = er.dbml(venue())
+    assert table(text, "venue_restaurant").splitlines()[1:3] == [
+        "  place_ptr_id bigint [pk]",
+        "  serves_pizza bool [default: false, not null]",
+    ]
+    # The parent's many-to-many is the parent's, written once.
+    assert text.count("Table venue_place_tags {") == 1
+    assert "venue_restaurant }o--o{" not in er.mermaid(venue())
+    assert (
+        "Ref venue_restaurant_place_ptr_id_fk: venue_restaurant.place_ptr_id - venue_place.id "
+        "[delete: cascade]"
+    ) in text
+
+
+def test_dbml_writes_a_stored_value_once_with_its_labels():
+    text = er.dbml(venue())
+    assert (
+        "Enum ConnectionEngine {\n"
+        '  "django.db.backends.postgresql"\n'
+        "  \"django.db.backends.mysql\" [note: 'MySQL / MariaDB']\n"
+        "}"
+    ) in text
+    # The docs list every choice with its label.
+    docs = markdown.render(venue(), sql="", diagram=None)
+    assert "| `MySQL` | `django.db.backends.mysql` |" in docs
+    assert "| `MariaDB` | `django.db.backends.mysql` |" in docs
+
+
+def test_docs_on_postgresql_need_no_database(postgresql):
+    schema = export.schema_for(postgresql, ROOT, everything=False)
+    text = export.render_docs(postgresql, schema)["README.md"].decode()
+    assert 'CREATE TABLE "venue_event"' in text
+    assert 'CREATE INDEX "venue_event_code_7025c133_like" ON "venue_event"' in text
+    assert connections[postgresql].connection is None
+
+
+def enum_heavy() -> dict:
+    """Three models in a chain, each with four `choices` fields: twelve enums, and no column of
+    models taller than one short card."""
+    schema = shop()
+    customer = next(m for m in schema["models"] if m["name"] == "Customer")
+    kind = next(f for f in schema["models"][1]["fields"] if f["name"] == "kind")
+    enums = []
+    for model in schema["models"]:
+        for number in range(4):
+            name = f"{model['name']}Choice{number}"
+            model["fields"].append({**kind, "name": f"choice_{number}", "type": name})
+            enums.append({**schema["enums"][0], "name": name})
+    assert customer["fields"][-1]["type"] == "CustomerChoice3"
+    return {**schema, "enums": enums}
+
+
+def test_svg_wraps_the_enums_into_columns_no_taller_than_the_models():
+    cards = svg.layout(enum_heavy())
+    models = [card for card in cards.values() if not card.enum]
+    enums = [card for card in cards.values() if card.enum]
+    bottom = max(card.y + card.height for card in models)
+    assert all(card.y + card.height <= bottom for card in enums)
+    assert len({card.column for card in enums}) > 1
+    assert min(card.column for card in enums) > max(card.column for card in models)
+
+
+def test_svg_without_enums(tmp_path, monkeypatch):
+    assert not any(card.enum for card in svg.layout(venue(), enums=False).values())
+    document = svg.render(venue(), enums=False)
+    assert 'class="enum-node"' not in document
+    assert 'class="enum-edge"' not in document
+    monkeypatch.chdir(ROOT)
+    assert cli.main(["er", "-o", str(tmp_path / "er.svg"), "--no-enums"]) == 0
+    assert 'class="enum-node"' not in (tmp_path / "er.svg").read_text()

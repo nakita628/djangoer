@@ -63,3 +63,42 @@ class PageViewRestriction(models.Model):
     class Meta:
         app_label = "venue"
         db_table = "venue_pageviewrestriction_with_a_long_table_name"
+
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50)
+
+    class Meta:
+        app_label = "venue"
+
+
+class Place(models.Model):
+    name = models.CharField(max_length=100)
+    tags = models.ManyToManyField(Tag)
+
+    class Meta:
+        app_label = "venue"
+
+
+class Restaurant(Place):
+    """Multi-table inheritance: its table has the link to its parent and its own columns."""
+
+    serves_pizza = models.BooleanField(default=False)
+
+    class Meta:
+        app_label = "venue"
+
+
+class Connection(models.Model):
+    # One stored value under two labels, as django-sql-explorer has it.
+    engine = models.CharField(
+        max_length=255,
+        choices=[
+            ("django.db.backends.postgresql", "PostgreSQL"),
+            ("django.db.backends.mysql", "MySQL"),
+            ("django.db.backends.mysql", "MariaDB"),
+        ],
+    )
+
+    class Meta:
+        app_label = "venue"

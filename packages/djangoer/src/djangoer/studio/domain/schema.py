@@ -474,7 +474,9 @@ def build_model(
 ) -> dict[str, Any]:
     meta = model._meta
     fields: list[dict[str, Any]] = []
-    for field in meta.get_fields():
+    # The model's own fields: with multi-table inheritance the parent's are in the parent's
+    # table, and the child has the link to it (`place_ptr_id`) and its own columns.
+    for field in meta.get_fields(include_parents=False):
         if isinstance(field, ForeignObjectRel):
             # The other side of a relation declared elsewhere: `author.post_set`.
             accessor = field.get_accessor_name()
@@ -575,7 +577,8 @@ def build_relations(
     out: list[dict[str, Any]] = []
     for model in model_list:
         child = known.of(model)
-        for field in model._meta.get_fields():
+        # A relation inherited from a concrete parent is the parent's, drawn once from it.
+        for field in model._meta.get_fields(include_parents=False):
             if isinstance(field, ForeignObjectRel):
                 continue
             if field.many_to_many:
