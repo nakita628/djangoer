@@ -24,6 +24,8 @@ from django.db.models.fields import NOT_PROVIDED
 from django.db.models.fields.related import ForeignObjectRel
 from django.db.models.sql import Query
 
+from .assumed import offline, without_server
+
 
 def _site_roots() -> list[Path]:
     roots = []
@@ -113,11 +115,11 @@ def _compiled(alias: str, build) -> str | None:
     cannot write it (or the Django is too old to have it)."""
     try:
         connection = connections[alias]
-        editor = connection.schema_editor()
+        editor = without_server(connection.schema_editor())
         sql, params = build(connection, editor)
+        return sql % tuple(editor.quote_value(param) for param in params) if params else sql
     except Exception:  # noqa: BLE001 - a backend that cannot compile it offline
         return None
-    return sql % tuple(editor.quote_value(param) for param in params) if params else sql
 
 
 def _db_default(field: models.Field, alias: str) -> str | None:
@@ -162,9 +164,12 @@ def _attributes(field: models.Field) -> list[str]:
 
 def _native_type(field: models.Field, alias: str) -> str | None:
     try:
-        return field.db_type(connections[alias])
+        native = field.db_type(connections[alias])
     except Exception:  # noqa: BLE001 - no column type without a usable connection
         return None
+    # MySQL's type of an automatic key says how it is filled (`bigint AUTO_INCREMENT`), which
+    # the default says already (`autoincrement()`), as on every other backend.
+    return re.sub(r"\s+AUTO_INCREMENT$", "", native, flags=re.IGNORECASE) if native else native
 
 
 def _enum_name(model: type[models.Model], field: models.Field, owner: str) -> str:
@@ -196,10 +201,22 @@ def _enum_values(model: type[models.Model], field: models.Field) -> list[dict[st
                 and list(value.choices) == list(field.flatchoices)
             ):
                 labels = {member.value: member.name for member in value}
+    groups = _choice_groups(field)
     return [
-        {"name": labels.get(value, str(label)), "dbName": str(value)}
+        {"name": labels.get(value, str(label)), "dbName": str(value), "group": groups.get(value)}
         for value, label in field.flatchoices
     ]
+
+
+def _choice_groups(field: models.Field) -> dict[Any, str]:
+    """The group of each value of grouped choices (`{"Audio": {"vinyl": "Vinyl"}}`) by value."""
+    groups: dict[Any, str] = {}
+    for value, label in field.choices or ():
+        if isinstance(label, (list, tuple)):
+            for choice in label:
+                if isinstance(choice, (list, tuple)) and len(choice) == 2:
+                    groups.setdefault(choice[0], str(value))
+    return groups
 
 
 def _location(obj: Any, root: Path) -> dict[str, Any] | None:
@@ -285,11 +302,29 @@ def _scalar_field(
         "dbDefault": _db_default(field, alias),
         "generated": generated,
         "nativeType": _native_type(field, alias),
+        # Stored on disk or computed on read, for a generated column (`db_persist`).
+        "stored": _stored(field) if generated is not None else None,
+        "collation": getattr(field, "db_collation", None) or None,
+        # What a DecimalField declares, which SQLite's `decimal` does not say.
+        **_digits(field),
         "documentation": documentation,
         "annotations": [],
         "relation": None,
         "attributes": _attributes(field),
     }
+
+
+def _stored(field: models.Field) -> bool | None:
+    persist = getattr(field, "db_persist", None)
+    return None if persist is None else bool(persist)
+
+
+def _digits(field: models.Field) -> dict[str, int | None]:
+    # A GeneratedField declares them on its output field.
+    target = getattr(field, "output_field", None) if getattr(field, "generated", False) else field
+    if not isinstance(target, models.DecimalField):
+        return {"maxDigits": None, "decimalPlaces": None}
+    return {"maxDigits": target.max_digits, "decimalPlaces": target.decimal_places}
 
 
 def _object_field(
@@ -317,6 +352,10 @@ def _object_field(
         "dbDefault": None,
         "generated": None,
         "nativeType": None,
+        "stored": None,
+        "collation": None,
+        "maxDigits": None,
+        "decimalPlaces": None,
         "documentation": documentation,
         "annotations": [],
         "relation": relation,
@@ -338,6 +377,17 @@ def _on_delete(action: Any) -> str | None:
     return getattr(action, "__name__", None)
 
 
+def _through_model(field: Any, known: Names) -> str | None:
+    """The model a many-to-many goes through, when it is one of the project's (`through=`): the
+    table Django creates for the others is the relation's own."""
+    if not field.many_to_many:
+        return None
+    through = getattr(field, "through", None) or getattr(field.remote_field, "through", None)
+    if through is None or isinstance(through, str) or through._meta.auto_created:
+        return None
+    return known.of(through)
+
+
 def _relation_name(field: models.Field) -> str | None:
     """The name a relation was given: its `related_name`, when the model set one."""
     related_name = getattr(field.remote_field, "related_name", None)
@@ -349,7 +399,7 @@ def _sql(model: type[models.Model], alias: str, build) -> str | None:
     with its parameters in place. None when the connection cannot write it."""
     try:
         connection = connections[alias]
-        editor = connection.schema_editor()
+        editor = without_server(connection.schema_editor())
         query = Query(model, alias_cols=False)
         sql, params = build(query, query.get_compiler(connection=connection), connection)
         return sql % tuple(editor.quote_value(param) for param in params)
@@ -504,7 +554,7 @@ def _editor(alias: str):
     """A schema editor of the database, to ask what it would create. It is never entered, so it
     runs nothing and needs no connection open."""
     try:
-        return connections[alias].schema_editor()
+        return without_server(connections[alias].schema_editor())
     except Exception:  # noqa: BLE001 - no editor without a usable backend
         return None
 
@@ -694,6 +744,7 @@ def build_model(
                         "toFields": [],
                         "onDelete": None,
                         "onUpdate": None,
+                        "through": _through_model(field, known),
                     },
                     attributes=[],
                 )
@@ -716,6 +767,7 @@ def build_model(
                         "toFields": [],
                         "onDelete": None,
                         "onUpdate": None,
+                        "through": _through_model(field, known),
                     },
                     attributes=_attributes(field),
                     documentation=str(field.help_text) if field.help_text else None,
@@ -748,6 +800,7 @@ def build_model(
                         "toFields": [field.target_field.attname],
                         "onDelete": _on_delete(on_delete),
                         "onUpdate": None,
+                        "through": None,
                     },
                     attributes=[],
                 )
@@ -770,6 +823,8 @@ def build_model(
         "indexes": _indexes(model, alias),
         "genericForeignKeys": _generic_foreign_keys(model),
         "checks": _checks(model, alias),
+        "proxies": _proxies(model),
+        "abstractBases": _abstract_bases(model),
         # Whether Django creates the table: `managed = False` is a table or a view made by
         # something else, whose indexes are the ones the model declares, not ones Django makes.
         "managed": bool(meta.managed),
@@ -781,6 +836,43 @@ def build_model(
         # be found at, but it is in the project's app, its database and its migrations.
         "own": own,
     }
+
+
+def _proxies(model: type[models.Model]) -> list[dict[str, Any]]:
+    """The proxy models of a model (`Meta.proxy = True`): no table of their own, the model's
+    rows under another name, admin, manager or ordering."""
+    return [
+        {
+            "name": proxy.__name__,
+            "app": proxy._meta.app_label,
+            "documentation": _documentation(proxy),
+        }
+        for proxy in apps.get_models()
+        if proxy._meta.proxy and proxy._meta.concrete_model is model
+    ]
+
+
+def _abstract_bases(model: type[models.Model]) -> list[dict[str, Any]]:
+    """The abstract models a model takes columns from (`Timestamped`), nearest first, each with
+    the columns of the model's own table it declares. A column of a concrete parent's table is
+    the parent's, said there."""
+    local = {field.name: field for field in model._meta.local_concrete_fields}
+    out = []
+    claimed: set[str] = set()
+    # From the furthest base to the nearest: a field is the one of the base that declares it.
+    for base in reversed(model.__mro__[1:]):
+        meta = getattr(base, "_meta", None)
+        if meta is None or not meta.abstract:
+            continue
+        names = [
+            field.name
+            for field in meta.local_fields
+            if field.name in local and field.name not in claimed
+        ]
+        claimed.update(names)
+        if names:
+            out.append({"name": base.__name__, "fields": [local[name].attname for name in names]})
+    return list(reversed(out))
 
 
 def build_relations(
@@ -810,6 +902,9 @@ def build_relations(
                         "onDelete": None,
                         "onUpdate": None,
                         "through": _through(field, alias, enums),
+                        # The keys of its table are foreign keys unless it says otherwise.
+                        "constrained": bool(field.remote_field.db_constraint),
+                        "parentLink": False,
                     }
                 )
                 continue
@@ -838,6 +933,9 @@ def build_relations(
                             "onDelete": _on_delete(on_delete),
                             "onUpdate": None,
                             "through": None,
+                            # Django makes a constraint for a ForeignKey only.
+                            "constrained": False,
+                            "parentLink": False,
                         }
                     )
                 continue
@@ -868,9 +966,18 @@ def build_relations(
                     "onDelete": _on_delete(on_delete),
                     "onUpdate": None,
                     "through": None,
+                    "constrained": _constrained(field),
+                    # Multi-table inheritance: the child's row is the parent's, joined on it.
+                    "parentLink": bool(getattr(field.remote_field, "parent_link", False)),
                 }
             )
     return out
+
+
+def _constrained(field: Any) -> bool:
+    """Whether the database has a foreign key for a relation: Django makes one for a
+    ForeignKey (and a OneToOneField), unless `db_constraint=False`; never for a ForeignObject."""
+    return isinstance(field, models.ForeignKey) and bool(field.db_constraint)
 
 
 def _composite(field: Any) -> bool:
@@ -905,6 +1012,7 @@ def _composite_relation(field: Any, known: Names) -> dict[str, Any] | None:
             "toFields": [column.attname for column in field.foreign_related_fields],
             "onDelete": _on_delete(on_delete),
             "onUpdate": None,
+            "through": None,
         },
         attributes=_attributes(field),
     )
@@ -954,6 +1062,8 @@ def _generic_relation(field: Any, model: type[models.Model], known: Names) -> di
         "onDelete": None,
         "onUpdate": None,
         "through": None,
+        "constrained": False,
+        "parentLink": False,
     }
 
 
@@ -1016,6 +1126,17 @@ def _files(model_list: list[type[models.Model]], root: Path) -> list[dict[str, s
 
 
 def build_schema(alias: str = "default", root: Path | None = None) -> dict[str, Any]:
+    """The schema of the project's models. On MySQL the type of a column depends on the server,
+    which is assumed when it cannot be asked (`assumed.offline`), as the docs' SQL says."""
+    try:
+        connection = connections[alias]
+    except Exception:  # noqa: BLE001 - an alias the settings do not have: no types to ask for
+        return _build_schema(alias, root)
+    with offline(connection):
+        return _build_schema(alias, root)
+
+
+def _build_schema(alias: str, root: Path | None) -> dict[str, Any]:
     root = root or Path.cwd()
     # The project's own models first, then the ones of the packages it installs.
     model_list = sorted(

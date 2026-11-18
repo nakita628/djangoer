@@ -14,6 +14,23 @@ from . import __version__
 DEFAULT_PORT = 5555
 
 
+class ProjectLoadError(Exception):
+    """Django could not set the project up: a settings mistake (`ImproperlyConfigured`, an app
+    missing from INSTALLED_APPS, a wrong AUTH_USER_MODEL), said in one line, not a traceback."""
+
+
+def setup_django() -> None:
+    """`django.setup()`, a failure of the project's (not an import) as `ProjectLoadError`."""
+    import django
+
+    try:
+        django.setup()
+    except ImportError:
+        raise
+    except Exception as error:
+        raise ProjectLoadError(error) from error
+
+
 def settings_from_manage_py(directory: Path) -> str | None:
     """The settings module `manage.py` sets as the default, read without running it."""
     manage = directory / "manage.py"
@@ -76,7 +93,9 @@ def serve(options: argparse.Namespace, *, write=_print) -> None:
             autoreload.check_errors(django.setup)()
         except Exception as error:
             if options.no_reload:
-                raise
+                if isinstance(error, ImportError):
+                    raise
+                raise ProjectLoadError(error) from error
             failure = error
             # Django's reloader starts watching files once the apps are ready, or once this
             # thread ends. Neither will happen: the apps did not load, and this thread goes on
@@ -136,6 +155,11 @@ def add_project_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--pythonpath", help="directory to import the project from (default: the current directory)"
+    )
+    parser.add_argument(
+        "--traceback",
+        action="store_true",
+        help="show the whole traceback when the project does not load, not one line",
     )
 
 
@@ -203,10 +227,9 @@ def load_project(options: argparse.Namespace) -> bool:
 def write_er(options: argparse.Namespace) -> int:
     """`djangoer er -o er.md -o schema.dbml -o er.svg -o er.png`: the ER diagram, in the format
     each file's extension names."""
-    import django
     from returns.result import Failure, Success
 
-    django.setup()
+    setup_django()
     from .studio.domain import er, export
 
     schema = export.schema_for(options.database, Path.cwd(), everything=options.all)
@@ -221,8 +244,9 @@ def write_er(options: argparse.Namespace) -> int:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
                 _print(f"wrote {target}")
-                size = len(content.decode())
-                if target.suffix.lower() == ".md" and size > er.MERMAID_LIMIT:
+                # Only Mermaid has a limit, and only text can be counted: a PNG is bytes.
+                size = len(content.decode()) if target.suffix.lower() == ".md" else 0
+                if size > er.MERMAID_LIMIT:
                     print(
                         f"djangoer: {target}: {size:,} characters, more than the "
                         f"{er.MERMAID_LIMIT:,} Mermaid draws (GitHub too); an .svg is drawn "
@@ -239,9 +263,7 @@ def write_docs(options: argparse.Namespace) -> int:
     """`djangoer docs -o docs/schema`: README.md with every model, the diagram it opens with, and
     one per model with a relation in tables/. The diagram of a model that is gone is removed, so a
     directory written again holds none that is stale."""
-    import django
-
-    django.setup()
+    setup_django()
     from .studio.domain import export
 
     schema = export.schema_for(options.database, Path.cwd(), everything=options.all)
@@ -307,6 +329,13 @@ def main(argv: list[str] | None = None) -> int:
             return write_docs(options)
         serve(options)
     except ImportError as error:
+        if options.traceback:
+            raise
         print(f"djangoer: cannot import the project: {error}", file=sys.stderr)
+        return 1
+    except ProjectLoadError as error:
+        if options.traceback:
+            raise error.__cause__ or error from None
+        print(f"djangoer: cannot load the project: {error}", file=sys.stderr)
         return 1
     return 0

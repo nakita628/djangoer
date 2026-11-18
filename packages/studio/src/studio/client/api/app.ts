@@ -10,6 +10,7 @@ type FieldRelation = {
   toFields: string[]
   onDelete: string | null
   onUpdate: string | null
+  through: string | null
 }
 type Field = {
   name: string
@@ -26,6 +27,10 @@ type Field = {
   dbDefault: string | null
   generated: string | null
   nativeType: string | null
+  stored: boolean | null
+  collation: string | null
+  maxDigits: number | null
+  decimalPlaces: number | null
   documentation: string | null
   annotations: string[]
   relation: FieldRelation | null
@@ -49,6 +54,8 @@ type Index = {
 }
 type GenericForeignKey = { name: string; contentTypeField: string; objectIdField: string }
 type Check = { name: string; expression: string }
+type ProxyModel = { name: string; app: string; documentation: string | null }
+type AbstractBase = { name: string; fields: string[] }
 type Location = { file: string; line: number }
 type Model = {
   name: string
@@ -61,12 +68,14 @@ type Model = {
   indexes: Index[]
   genericForeignKeys: GenericForeignKey[]
   checks: Check[]
+  proxies: ProxyModel[]
+  abstractBases: AbstractBase[]
   managed: boolean
   attributes: string[]
   location: Location | null
   own: boolean
 }
-type EnumValue = { name: string; dbName: string | null }
+type EnumValue = { name: string; dbName: string | null; group: string | null }
 type Enum = {
   name: string
   dbName: string | null
@@ -95,6 +104,8 @@ type Relation = {
   onDelete: string | null
   onUpdate: string | null
   through: Through | null
+  constrained: boolean
+  parentLink: boolean
 }
 type Schema = {
   files: SchemaFile[]

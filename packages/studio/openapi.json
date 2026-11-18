@@ -1208,6 +1208,29 @@
   },
   "components": {
     "schemas": {
+      "AbstractBase": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "fields"
+        ],
+        "title": "AbstractBase",
+        "description": "An abstract model a model takes columns from (`Timestamped`), and which columns."
+      },
       "Affected": {
         "properties": {
           "affected": {
@@ -2479,13 +2502,25 @@
               }
             ],
             "title": "Dbname"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "name",
-          "dbName"
+          "dbName",
+          "group"
         ],
         "title": "EnumValue"
       },
@@ -2588,6 +2623,50 @@
             ],
             "title": "Nativetype"
           },
+          "stored": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored"
+          },
+          "collation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collation"
+          },
+          "maxDigits": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxdigits"
+          },
+          "decimalPlaces": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decimalplaces"
+          },
           "documentation": {
             "anyOf": [
               {
@@ -2641,6 +2720,10 @@
           "dbDefault",
           "generated",
           "nativeType",
+          "stored",
+          "collation",
+          "maxDigits",
+          "decimalPlaces",
           "documentation",
           "annotations",
           "relation",
@@ -2696,6 +2779,17 @@
               }
             ],
             "title": "Onupdate"
+          },
+          "through": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Through"
           }
         },
         "additionalProperties": false,
@@ -2705,7 +2799,8 @@
           "fromFields",
           "toFields",
           "onDelete",
-          "onUpdate"
+          "onUpdate",
+          "through"
         ],
         "title": "FieldRelation",
         "description": "The relation an object field follows: `author` reads `author_id` → `Author.id`."
@@ -3225,6 +3320,20 @@
             "type": "array",
             "title": "Checks"
           },
+          "proxies": {
+            "items": {
+              "$ref": "#/components/schemas/ProxyModel"
+            },
+            "type": "array",
+            "title": "Proxies"
+          },
+          "abstractBases": {
+            "items": {
+              "$ref": "#/components/schemas/AbstractBase"
+            },
+            "type": "array",
+            "title": "Abstractbases"
+          },
           "managed": {
             "type": "boolean",
             "title": "Managed"
@@ -3264,6 +3373,8 @@
           "indexes",
           "genericForeignKeys",
           "checks",
+          "proxies",
+          "abstractBases",
           "managed",
           "attributes",
           "location",
@@ -3457,6 +3568,38 @@
         ],
         "title": "PlanNode"
       },
+      "ProxyModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "app": {
+            "type": "string",
+            "title": "App"
+          },
+          "documentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documentation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "app",
+          "documentation"
+        ],
+        "title": "ProxyModel",
+        "description": "A proxy of a model (`Meta.proxy = True`): its rows under another name, no table."
+      },
       "Relation": {
         "properties": {
           "id": {
@@ -3521,6 +3664,14 @@
                 "type": "null"
               }
             ]
+          },
+          "constrained": {
+            "type": "boolean",
+            "title": "Constrained"
+          },
+          "parentLink": {
+            "type": "boolean",
+            "title": "Parentlink"
           }
         },
         "additionalProperties": false,
@@ -3533,7 +3684,9 @@
           "to",
           "onDelete",
           "onUpdate",
-          "through"
+          "through",
+          "constrained",
+          "parentLink"
         ],
         "title": "Relation"
       },
