@@ -10,7 +10,7 @@ Table blog_author {
   name varchar(100) [not null]
   email varchar(254) [unique, not null, note: 'Where replies are sent']
   bio text [not null]
-  joined_at datetime [default: `now()`, not null]
+  joined_at datetime [not null, note: 'default in Python: now()']
 
   Note: '''Someone who writes posts.'''
 }
@@ -29,10 +29,10 @@ Table blog_post {
   status PostStatus [default: 'draft', not null]
   views "integer unsigned" [default: 0, not null]
   rating decimal
-  metadata text [default: `dict()`, not null]
+  metadata text [not null, note: 'default in Python: dict()']
   published_at datetime
-  created_at datetime [default: `now()`, not null]
-  updated_at datetime [default: `now()`, not null]
+  created_at datetime [not null, note: 'default in Python: now()']
+  updated_at datetime [not null, note: 'default in Python: now()']
 
   indexes {
     (author_id) [name: 'blog_post_author_id_dd7a8485']
@@ -51,7 +51,7 @@ Table blog_comment {
   parent_id bigint
   text text [not null]
   approved bool [default: false, not null]
-  created_at datetime [default: `now()`, not null]
+  created_at datetime [not null, note: 'default in Python: now()']
 
   indexes {
     (post_id) [name: 'blog_comment_post_id_580e96ef']

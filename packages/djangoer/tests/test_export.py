@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from argparse import Namespace
+from itertools import pairwise
 from pathlib import Path
 
 import django
@@ -79,6 +80,9 @@ def test_an_export_covers_the_projects_own_models_unless_asked_for_all():
         # The models of the modern app, on the Django that has them.
         *(["Item"] if since(5, 0) else []),
         *(["OrderLine", "Shipment"] if since(5, 2) else []),
+        "Worker",
+        "Job",
+        "Document",
     ]
     everything = export.schema_for("default", ROOT, everything=True)
     assert "User" in [model["name"] for model in everything["models"]]
@@ -260,6 +264,9 @@ def test_indexes_are_the_ones_the_database_has():
         "expressions": ['LOWER("email")'],
         "condition": None,
         "opclasses": [],
+        "method": None,
+        "include": [],
+        "parameters": [],
         "attribute": "Index(Lower(F(email)), name='event_email_lower')",
     }
     restriction = next(m for m in venue()["models"] if m["name"] == "PageViewRestriction")
@@ -706,3 +713,130 @@ def test_writing_the_docs_again_removes_the_diagram_of_a_model_that_is_gone(tmp_
     assert (tmp_path / "tables" / "Order.svg").is_file()
     # Only the diagrams are the command's to remove.
     assert kept.read_text() == "mine"
+
+
+def chain(count: int, reach: int) -> dict:
+    """Models in a chain, each referring to the one before it (a column each), and to the one
+    `reach` before it too: those lines cross columns, over the cards."""
+
+    def column(name: str, foreign: bool) -> dict:
+        return {
+            **next(f for f in shop()["models"][0]["fields"] if f["name"] == "id"),
+            "name": name,
+            "isId": not foreign,
+            "isForeignKey": foreign,
+            "type": "ForeignKey" if foreign else "BigAutoField",
+        }
+
+    names = [f"M{index}" for index in range(count)]
+    models = [
+        {
+            **shop()["models"][0],
+            "name": name,
+            "dbName": name.lower(),
+            "fields": [column("id", False), column("near_id", True), column("far_id", True)],
+        }
+        for name in names
+    ]
+
+    def relation(parent: str, child: str, field: str) -> dict:
+        return {
+            "id": f"{parent}->{child}.{field}",
+            "name": None,
+            "origin": "inferred",
+            "from": {"model": parent, "field": "id", "cardinality": "one"},
+            "to": {"model": child, "field": field, "cardinality": "zero-many"},
+            "onDelete": None,
+            "onUpdate": None,
+            "through": None,
+        }
+
+    relations = [relation(names[i - 1], names[i], "near_id") for i in range(1, count)]
+    relations += [relation(names[i - reach], names[i], "far_id") for i in range(reach, count)]
+    return {**shop(), "models": models, "enums": [], "relations": relations}
+
+
+def test_svg_lines_over_the_cards_share_a_track_when_they_do_not_overlap():
+    schema = chain(20, 3)
+    cards = svg.layout(schema)
+    router = svg.Router(cards)
+    svg._edges(schema, cards, router)
+    long_lines = len([r for r in schema["relations"] if r["to"]["field"] == "far_id"])
+    assert long_lines == 17
+    # A track each for the lines that run side by side, not one for every line: a line over
+    # three columns meets only the two before it and the two after it.
+    assert len(router.tracks) <= 4
+
+
+def test_svg_lines_on_one_lane_do_not_meet():
+    schema = chain(20, 3)
+    cards = svg.layout(schema)
+    router = svg.Router(cards)
+    svg._edges(schema, cards, router)
+    for lanes in [router.tracks, *router.gaps.values()]:
+        for spans in lanes.taken:
+            ordered = sorted(spans)
+            assert all(a[1] + svg.LANE <= b[0] for a, b in pairwise(ordered))
+
+
+def legacy():
+    return app("legacy")
+
+
+def test_dbml_quotes_a_sized_array_and_escapes_a_note():
+    text = table(er.dbml(legacy()), "legacy_jobs")
+    assert '  authors "varchar(64)[]" [' in text
+    # A plain array of a plain type parses bare, as it did.
+    assert "  tags text[] [" in text
+    assert "Removed later by \\'python manage.py cleanup\\''''" in text
+
+
+def test_a_python_default_is_a_note_not_a_database_default():
+    text = er.dbml(shop())
+    # `default=dict` is called by Python for a new row; the database has no default for it.
+    assert "  attributes text [not null, note: 'default in Python: dict()']" in text
+    assert "`dict()`" not in text
+    # A literal default stays a default.
+    assert "  paid bool [default: false, not null]" in text
+
+
+def test_a_model_django_does_not_manage_is_marked_and_has_only_declared_indexes():
+    schema = legacy()
+    job = next(m for m in schema["models"] if m["name"] == "Job")
+    assert job["managed"] is False
+    # No index Django would name for a foreign key or a db_index: it creates none here.
+    assert job["indexes"] == []
+    document = next(m for m in schema["models"] if m["name"] == "Document")
+    assert [index["name"] for index in document["indexes"]] == [
+        "document_labels",
+        "document_seen",
+        "document_digest",
+        "document_base_path",
+    ]
+    docs = markdown.render(schema, sql="", diagram=None)
+    assert "## Job\n\nTable `legacy_jobs`, app `legacy`.\n\nNot managed by Django" in docs
+    assert "Indexes, as declared:" in docs
+    assert "Note: '''Not managed by Django (managed = False)." in er.dbml(schema)
+    assert 'class="unmanaged"' in svg.render(schema)
+    assert 'class="unmanaged"' not in svg.render(shop())
+
+
+def test_an_index_says_its_method_include_and_parameters():
+    document = next(m for m in legacy()["models"] if m["name"] == "Document")
+    by_name = {index["name"]: index for index in document["indexes"]}
+    assert by_name["document_labels"]["method"] == "gin"
+    assert by_name["document_seen"]["parameters"] == ["pages_per_range = 16"]
+    # An OpClass around a field is the field with its operator class, not an expression.
+    base_path = by_name["document_base_path"]
+    assert (base_path["fields"], base_path["expressions"]) == (["base_path"], [])
+    assert (base_path["opclasses"], base_path["include"]) == (["text_ops"], ["domain"])
+    docs = markdown.render(legacy(), sql="", diagram=None)
+    assert "- gin index `document_labels` on `labels`" in docs
+    assert "- brin index `document_seen` on `seen` with `pages_per_range = 16`" in docs
+    assert "- index `document_base_path` on `base_path` (`text_ops`) include `domain`" in docs
+    text = table(er.dbml(legacy()), "legacy_document")
+    assert "    (labels) [name: 'document_labels', note: 'using gin']" in text
+    assert "    (digest) [type: hash, name: 'document_digest']" in text
+    assert (
+        "    (seen) [name: 'document_seen', note: 'using brin; with (pages_per_range = 16)']"
+    ) in text

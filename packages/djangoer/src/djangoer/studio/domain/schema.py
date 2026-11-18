@@ -343,23 +343,43 @@ def _sql(model: type[models.Model], alias: str, build) -> str | None:
         return None
 
 
+def _field_of(model: type[models.Model], expression: Any) -> str | None:
+    """The column a bare field expression (`F("last_seen")`) stands for."""
+    if not isinstance(expression, F):
+        return None
+    try:
+        return model._meta.get_field(expression.name).attname
+    except FieldDoesNotExist:
+        return None
+
+
 def _expressions(
     model: type[models.Model], expressions: tuple[Any, ...], alias: str
-) -> tuple[list[str], list[str]]:
-    """The fields and the expressions of an index declared with positional expressions.
+) -> tuple[list[str], list[str], list[str]]:
+    """The fields, the expressions and the operator classes of an index declared with
+    positional expressions.
 
-    A bare field (`BrinIndex("last_seen")`) is a column like any other; anything else
-    (`Lower("email")`) is written as the SQL it compiles to, or as Django writes it.
+    A bare field (`BrinIndex("last_seen")`) is a column like any other, and so is a field with
+    its operator class (`OpClass(F("base_path"), name="text_ops")`), whose class goes with the
+    others; anything else (`Lower("email")`) is written as the SQL it compiles to, or as Django
+    writes it.
     """
     fields: list[str] = []
     out: list[str] = []
+    opclasses: list[str] = []
     for expression in expressions:
-        if isinstance(expression, F):
-            try:
-                fields.append(model._meta.get_field(expression.name).attname)
+        column = _field_of(model, expression)
+        if column is not None:
+            fields.append(column)
+            continue
+        # contrib.postgres's OpClass, told by its name: the app need not be installed.
+        if type(expression).__name__ == "OpClass" and expression.extra.get("name"):
+            sources = expression.get_source_expressions()
+            column = _field_of(model, sources[0]) if len(sources) == 1 else None
+            if column is not None:
+                fields.append(column)
+                opclasses.append(str(expression.extra["name"]))
                 continue
-            except FieldDoesNotExist:
-                pass
         sql = _sql(
             model,
             alias,
@@ -368,7 +388,26 @@ def _expressions(
             ),
         )
         out.append(sql or str(expression))
-    return fields, out
+    return fields, out, opclasses
+
+
+def _kind(index: Any, model: type[models.Model]) -> dict[str, Any]:
+    """How an index is made beside what it is on: its method when the class names one (`gin`,
+    `brin`, pgvector's `hnsw`; None for Django's own `Index`, a B-tree), the columns it
+    includes (`include=`), and its storage parameters (`m = 16`, `pages_per_range = 16`)."""
+    suffix = getattr(index, "suffix", None)
+    method = suffix if isinstance(suffix, str) and suffix not in ("idx", "") else None
+    include = [model._meta.get_field(name).attname for name in getattr(index, "include", ()) or ()]
+    try:
+        parameters = list(index.get_with_params()) if hasattr(index, "get_with_params") else []
+    except Exception:  # noqa: BLE001 - a third-party index that cannot say them offline
+        parameters = []
+    return {"method": method, "include": include, "parameters": parameters}
+
+
+def _plain() -> dict[str, Any]:
+    """The kind of an index Django makes for a column or a `unique_together`: a B-tree."""
+    return {"method": None, "include": [], "parameters": []}
 
 
 def _condition(model: type[models.Model], condition: Q | None, alias: str) -> str | None:
@@ -405,7 +444,8 @@ def _field_indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]
     has its unique index already), and on PostgreSQL the `_like` index of a text column that is
     indexed or unique."""
     editor = _editor(alias)
-    if editor is None:
+    # Django creates nothing for a model it does not manage: no index it would name either.
+    if editor is None or not model._meta.managed:
         return []
     out: list[dict[str, Any]] = []
     for field in model._meta.local_concrete_fields:
@@ -428,6 +468,7 @@ def _field_indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]
                     "expressions": [],
                     "condition": None,
                     "opclasses": opclasses,
+                    **_plain(),
                     "attribute": f"{field.name}: {declared}",
                 }
             )
@@ -437,7 +478,7 @@ def _field_indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]
 def _unique_together_name(model: type[models.Model], columns: list[str], alias: str):
     """The name Django gives the index of a `unique_together`: `orders_a_b_c7cdc6f9_uniq`."""
     editor = _editor(alias)
-    if editor is None:
+    if editor is None or not model._meta.managed:
         return None
     try:
         return editor._create_index_name(model._meta.db_table, columns, suffix="_uniq")
@@ -460,13 +501,14 @@ def _indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]]:
                 "expressions": [],
                 "condition": None,
                 "opclasses": [],
+                **_plain(),
                 "attribute": f"unique_together = {tuple(group)!r}",
             }
         )
     for constraint in meta.constraints:
         if not isinstance(constraint, models.UniqueConstraint):
             continue
-        fields, expressions = _expressions(model, constraint.expressions, alias)
+        fields, expressions, opclasses = _expressions(model, constraint.expressions, alias)
         fields += [meta.get_field(name).attname for name in constraint.fields]
         condition = _condition(model, constraint.condition, alias)
         declared = [*map(str, constraint.expressions)]
@@ -485,12 +527,13 @@ def _indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]]:
                 "fields": fields,
                 "expressions": expressions,
                 "condition": condition,
-                "opclasses": list(constraint.opclasses),
+                "opclasses": [*opclasses, *constraint.opclasses],
+                **_kind(constraint, model),
                 "attribute": f"UniqueConstraint({', '.join(declared)})",
             }
         )
     for index in meta.indexes:
-        fields, expressions = _expressions(model, index.expressions, alias)
+        fields, expressions, opclasses = _expressions(model, index.expressions, alias)
         fields += [meta.get_field(name.lstrip("-")).attname for name in index.fields]
         declared = [*map(str, index.expressions)]
         if index.fields:
@@ -508,7 +551,8 @@ def _indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]]:
                 "fields": fields,
                 "expressions": expressions,
                 "condition": _condition(model, index.condition, alias),
-                "opclasses": list(index.opclasses),
+                "opclasses": [*opclasses, *index.opclasses],
+                **_kind(index, model),
                 "attribute": f"{type(index).__name__}({', '.join(declared)})",
             }
         )
@@ -639,6 +683,9 @@ def build_model(
         "primaryKey": key if len(key) > 1 else None,
         "indexes": _indexes(model, alias),
         "genericForeignKeys": _generic_foreign_keys(model),
+        # Whether Django creates the table: `managed = False` is a table or a view made by
+        # something else, whose indexes are the ones the model declares, not ones Django makes.
+        "managed": bool(meta.managed),
         "attributes": _meta_attributes(model),
         # Where the class is written, when it is the project's: the source page opens there.
         "location": _location(model, root) if own else None,

@@ -10,6 +10,11 @@ from django.db import DatabaseError, connections
 from .er import MERMAID_LIMIT, column_name, columns, is_key, mermaid, relation_columns
 from .schema import Names
 
+# What the docs and DBML say of a model with `managed = False`.
+UNMANAGED = (
+    "Not managed by Django (`managed = False`): it neither creates nor changes the table, whose "
+    "indexes are the ones its own SQL gives it."
+)
 ACTIONS = {"CASCADE": "cascade", "SET_NULL": "set null", "PROTECT": "protect"}
 
 
@@ -176,14 +181,20 @@ def _key_name(model: dict[str, Any], name: str) -> str:
 
 
 def _index(index: dict[str, Any]) -> str:
-    """`- unique `name` on `a`, `lower("b")` where `"primary" = 1``."""
+    """`- gin index `name` on `a`, `lower("b")` (`opclass`) include `c` with `m = 16`
+    where `"primary" = 1``: the method only when it is not a B-tree."""
     kind = "unique" if index["type"] == "unique" else "index"
+    method = f"{index['method']} " if index["method"] else ""
     name = f" `{index['name']}`" if index["name"] else ""
     keys = [*index["fields"], *index["expressions"]]
-    where = f" where {_code(index['condition'])}" if index["condition"] else ""
     opclasses = ", ".join(_code(opclass) for opclass in index["opclasses"])
     using = f" ({opclasses})" if opclasses else ""
-    return f"- {kind}{name} on {', '.join(_code(key) for key in keys)}{using}{where}"
+    include = ", ".join(_code(column) for column in index["include"])
+    including = f" include {include}" if include else ""
+    parameters = f" with {_code(', '.join(index['parameters']))}" if index["parameters"] else ""
+    where = f" where {_code(index['condition'])}" if index["condition"] else ""
+    on = ", ".join(_code(key) for key in keys)
+    return f"- {method}{kind}{name} on {on}{using}{including}{parameters}{where}"
 
 
 def _default(field: dict[str, Any]) -> str:
@@ -200,6 +211,8 @@ def _model(
     model: dict[str, Any], schema: dict[str, Any], links: dict[str, str], diagram: str | None
 ) -> list[str]:
     lines = [f"## {model['name']}", "", f"Table `{model['dbName']}`, app `{model['app']}`."]
+    if not model["managed"]:
+        lines += ["", UNMANAGED]
     if model["documentation"]:
         lines += ["", model["documentation"]]
     if diagram is not None:
@@ -226,7 +239,8 @@ def _model(
             + " |"
         )
     if model["indexes"]:
-        lines += ["", "Indexes:", ""]
+        heading = "Indexes:" if model["managed"] else "Indexes, as declared:"
+        lines += ["", heading, ""]
         lines += [_index(index) for index in model["indexes"]]
     relations = _relations(model, schema, links)
     if relations:
