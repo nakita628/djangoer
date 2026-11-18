@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from django.db import DatabaseError, connections
 
-from .er import MERMAID_LIMIT, column_name, columns, is_key, mermaid, relation_columns
+from .er import (
+    MERMAID_LIMIT,
+    column_name,
+    columns,
+    external,
+    is_key,
+    mermaid,
+    relation_columns,
+)
 from .schema import Names
 
 # What the docs and DBML say of a model with `managed = False`.
@@ -15,7 +25,14 @@ UNMANAGED = (
     "Not managed by Django (`managed = False`): it neither creates nor changes the table, whose "
     "indexes are the ones its own SQL gives it."
 )
-ACTIONS = {"CASCADE": "cascade", "SET_NULL": "set null", "PROTECT": "protect"}
+ACTIONS = {
+    "CASCADE": "cascade",
+    "SET_NULL": "set null",
+    "SET_DEFAULT": "set default",
+    "PROTECT": "protect",
+    "RESTRICT": "restrict",
+    "DO_NOTHING": "do nothing",
+}
 
 
 def create_sql(schema: dict[str, Any], known: Names, alias: str) -> str:
@@ -27,22 +44,44 @@ def create_sql(schema: dict[str, Any], known: Names, alias: str) -> str:
     them on PostgreSQL with a cursor, which connects. Not atomic either: on a backend that can
     roll back DDL (PostgreSQL) the transaction would connect too. The docs need no database.
 
+    Some of what Django writes depends on the server's version (a `UniqueConstraint` with
+    `nulls_distinct` asks whether it is PostgreSQL 15), which takes a connection. When the
+    database cannot be reached, the model is written again for a version assumed
+    (`ASSUMED`), and the SQL says so in its first line.
+
     An add-on may connect all the same: django-pgtrigger opens a transaction for each trigger
     it adds to a table. What Django writes for the model is collected by then, so it is kept,
     and what was not collected is said in a comment at the end, rather than no docs at all.
     """
     connection = connections[alias]
     missing: list[str] = []
+    assumed: set[str] = set()
     with connection.schema_editor(collect_sql=True, atomic=False) as editor:
+        _merge_client_side(editor)
         for model in schema["models"]:
             cls = known.get(model["name"])
-            if cls is None or not cls._meta.managed:
+            if cls is None or not cls._meta.managed or external(model):
                 continue
+            mark = (len(editor.collected_sql), len(editor.deferred_sql))
             try:
                 editor.create_model(cls)
+                continue
             except DatabaseError as error:
-                reason = str(error).strip().splitlines()[0] if str(error).strip() else ""
-                missing.append(f"-- {model['name']}: {reason}")
+                failure = error
+            with _assumed_version(connection) as version:
+                if version is not None:
+                    # What the failed try collected is the start of the same statements.
+                    del editor.collected_sql[mark[0] :]
+                    del editor.deferred_sql[mark[1] :]
+                    try:
+                        editor.create_model(cls)
+                        assumed.add(version)
+                        continue
+                    except DatabaseError as error:
+                        assumed.add(version)
+                        failure = error
+            reason = str(failure).strip().splitlines()[0] if str(failure).strip() else ""
+            missing.append(f"-- {model['name']}: {reason}")
         deferred = [str(statement) for statement in editor.deferred_sql]
         editor.deferred_sql.clear()
     statements = [str(statement) for statement in editor.collected_sql]
@@ -53,7 +92,51 @@ def create_sql(schema: dict[str, Any], known: Names, alias: str) -> str:
     if missing:
         note = "-- Not collected: what is added to these tables needs the database, which is down."
         sql += "\n\n" + "\n".join([note, *missing])
+    if assumed:
+        versions = ", ".join(sorted(assumed))
+        sql = f"-- Written for {versions}, assumed: the database could not be asked.\n\n{sql}"
     return sql
+
+
+def _merge_client_side(editor: Any) -> None:
+    """Have the editor merge a statement's parameters itself, as Django's own editor does when
+    it collects (`quote_value`): PostgreSQL's merges them with a cursor, which connects, for a
+    `CREATE TABLE` with a `db_default` and for every deferred statement on Django 4.2."""
+    execute = editor.execute
+
+    def collect(sql: Any, params: Any = ()) -> Any:
+        if params is not None:
+            sql = str(sql) % tuple(editor.quote_value(param) for param in params)
+        return execute(sql, None)
+
+    editor.execute = collect
+
+
+# The version a backend asks its server for, the value to assume when it cannot be asked, and
+# how the docs name it: the newest PostgreSQL the supported Djangos know.
+ASSUMED = {"postgresql": ("pg_version", 170000, "PostgreSQL 17")}
+
+
+@contextmanager
+def _assumed_version(connection: Any) -> Iterator[str | None]:
+    """The connection told a version (`ASSUMED`) for as long as the block runs, and the name of
+    it; None for a backend with none to assume, or a version known already. Afterwards the
+    version and what the backend's features worked out from it are forgotten, so a connection
+    that can reach its server later (Studio's) asks it."""
+    entry = ASSUMED.get(connection.vendor)
+    if entry is None or entry[0] in vars(connection):
+        yield None
+        return
+    attribute, value, name = entry
+    features = vars(connection.features)
+    known = set(features)
+    vars(connection)[attribute] = value
+    try:
+        yield name
+    finally:
+        vars(connection).pop(attribute, None)
+        for key in set(features) - known:
+            features.pop(key, None)
 
 
 def _cell(text: str | None) -> str:
@@ -90,7 +173,11 @@ def anchors(schema: dict[str, Any]) -> dict[str, str]:
     """The anchor of each model's section, made from every heading in the order of the page."""
     seen: dict[str, int] = {}
     slug("Schema docs", seen)
-    return {model["name"]: slug(model["name"], seen) for model in schema["models"]}
+    return {
+        model["name"]: slug(model["name"], seen)
+        for model in schema["models"]
+        if not external(model)
+    }
 
 
 def _generic_lines(model: dict[str, Any]) -> list[str]:
@@ -116,7 +203,12 @@ def _relations(model: dict[str, Any], schema: dict[str, Any], links: dict[str, s
     tables = {entry["name"]: entry for entry in schema["models"]}
 
     def link(name: str) -> str:
-        return f"[{name}](#{links.get(name, name.lower())})"
+        # A stub of a model outside the docs is named, with nothing to link to.
+        return f"[{name}](#{links[name]})" if name in links else f"`{name}`"
+
+    def outside(name: str) -> str:
+        """What follows a model outside the docs: its app, and that it is not here."""
+        return "" if name in links else f" ({tables[name]['app']}, not in these docs)"
 
     lines = _generic_lines(model)
     for relation in schema["relations"]:
@@ -126,7 +218,7 @@ def _relations(model: dict[str, Any], schema: dict[str, Any], links: dict[str, s
         if relation["origin"] == "implicit-many-to-many":
             other = child["model"] if parent["model"] == model["name"] else parent["model"]
             mine = parent["field"] if parent["model"] == model["name"] else child["field"]
-            lines.append(f"- `{mine}` — many to many with {link(other)}")
+            lines.append(f"- `{mine}` — many to many with {link(other)}{outside(other)}")
             continue
         if relation["origin"] == "generic":
             content_type = _content_type_of(tables[child["model"]], child["field"])
@@ -144,7 +236,7 @@ def _relations(model: dict[str, Any], schema: dict[str, Any], links: dict[str, s
                     f"(generic, `{parent['model']}.{relation['name']}`)"
                 )
             continue
-        action = ACTIONS.get(relation["onDelete"] or "", (relation["onDelete"] or "").lower())
+        action = _action(relation["onDelete"])
         deletes = f", on delete {action}" if action else ""
         referred, referring = relation_columns(tables, relation)
         if len(referring) > 1:
@@ -163,7 +255,7 @@ def _relations(model: dict[str, Any], schema: dict[str, Any], links: dict[str, s
             target = tables[parent["model"]]
             lines.append(
                 f"- `{child['field']}` → {link(parent['model'])}"
-                f".`{_key_name(target, parent['field'])}`{deletes}"
+                f".`{_key_name(target, parent['field'])}`{outside(parent['model'])}{deletes}"
             )
         else:
             lines.append(
@@ -176,14 +268,24 @@ def _columns(names: list[str]) -> str:
     return "(" + ", ".join(f"`{name}`" for name in names) + ")"
 
 
+def _action(on_delete: str | None) -> str:
+    """`on_delete` as the docs say it: `cascade`, `set null`, `set (None)`…"""
+    if not on_delete:
+        return ""
+    if on_delete.startswith("SET(") and on_delete.endswith(")"):
+        return f"set ({on_delete[4:-1]})"
+    return ACTIONS.get(on_delete, on_delete.lower().replace("_", " "))
+
+
 def _key_name(model: dict[str, Any], name: str) -> str:
     return next((column_name(f) for f in model["fields"] if f["name"] == name), name)
 
 
 def _index(index: dict[str, Any]) -> str:
-    """`- gin index `name` on `a`, `lower("b")` (`opclass`) include `c` with `m = 16`
-    where `"primary" = 1``: the method only when it is not a B-tree."""
-    kind = "unique" if index["type"] == "unique" else "index"
+    """`- gin index `name` on `a`, `b` desc (`opclass`) include `c` with `m = 16`
+    where `"primary" = 1`, nulls not distinct, deferrable (initially deferred)`: the method only
+    when it is not a B-tree."""
+    kind = {"unique": "unique", "exclusion": "exclusion"}.get(index["type"], "index")
     method = f"{index['method']} " if index["method"] else ""
     name = f" `{index['name']}`" if index["name"] else ""
     keys = [*index["fields"], *index["expressions"]]
@@ -193,8 +295,14 @@ def _index(index: dict[str, Any]) -> str:
     including = f" include {include}" if include else ""
     parameters = f" with {_code(', '.join(index['parameters']))}" if index["parameters"] else ""
     where = f" where {_code(index['condition'])}" if index["condition"] else ""
-    on = ", ".join(_code(key) for key in keys)
-    return f"- {method}{kind}{name} on {on}{using}{including}{parameters}{where}"
+    on = ", ".join(_code(key) + (" desc" if key in index["descending"] else "") for key in keys)
+    rules = []
+    if index["nullsDistinct"] is not None:
+        rules.append("nulls distinct" if index["nullsDistinct"] else "nulls not distinct")
+    if index["deferrable"]:
+        rules.append(f"deferrable (initially {index['deferrable']})")
+    after = "".join(f", {rule}" for rule in rules)
+    return f"- {method}{kind}{name} on {on}{using}{including}{parameters}{where}{after}"
 
 
 def _default(field: dict[str, Any]) -> str:
@@ -242,6 +350,9 @@ def _model(
         heading = "Indexes:" if model["managed"] else "Indexes, as declared:"
         lines += ["", heading, ""]
         lines += [_index(index) for index in model["indexes"]]
+    if model["checks"]:
+        lines += ["", "Checks:", ""]
+        lines += [f"- `{c['name']}`: {_code(c['expression'])}" for c in model["checks"]]
     relations = _relations(model, schema, links)
     if relations:
         lines += ["", "Relations:", "", *relations]
@@ -300,6 +411,8 @@ def render(
             "",
         ]
     for model in schema["models"]:
+        if external(model):
+            continue
         own = (tables or {}).get(model["name"])
         lines += [*_model(model, schema, links, own), ""]
     if schema["enums"]:

@@ -26,17 +26,37 @@ DBML_ACTIONS = {
 }
 
 
+def referring(relation: dict[str, Any]) -> str:
+    """The model whose rows say what they refer to: the one with the foreign key (or with the
+    generic one), or the one that declares the many-to-many."""
+    end = "from" if relation["origin"] == "implicit-many-to-many" else "to"
+    return relation[end]["model"]
+
+
 def scoped(schema: dict[str, Any], *, everything: bool) -> dict[str, Any]:
     """The schema an export covers: the project's own models, or every model with `everything`.
 
     A model of an installed package (django.contrib.auth) is not in the project's directory,
-    which is how it is told apart (`own`). A relation to a model left out is left out with it,
-    and so is an enum no remaining field uses.
+    which is how it is told apart (`own`). It is left out, but not that the project's models
+    refer to it: "who wrote this post" is the first question a schema answers. A model a
+    project's model refers to stays as a stub, `external`: its key and the columns referred
+    to, no section of its own in the docs. A relation between models left out is left out, and
+    so is an enum no remaining field uses.
     """
     if everything:
         return schema
-    models = [model for model in schema["models"] if model["own"]]
-    kept = {model["name"] for model in models}
+    own = {model["name"] for model in schema["models"] if model["own"]}
+    relations = [relation for relation in schema["relations"] if referring(relation) in own]
+    referred: dict[str, set[str]] = {}
+    for relation in relations:
+        for end in ("from", "to"):
+            if relation[end]["model"] not in own:
+                referred.setdefault(relation[end]["model"], set()).add(relation[end]["field"])
+    models = [
+        model if model["own"] else _stub(model, referred[model["name"]])
+        for model in schema["models"]
+        if model["own"] or model["name"] in referred
+    ]
     used = {
         field["type"] for model in models for field in model["fields"] if field["kind"] == "enum"
     }
@@ -44,19 +64,42 @@ def scoped(schema: dict[str, Any], *, everything: bool) -> dict[str, Any]:
         **schema,
         "models": models,
         "enums": [enum for enum in schema["enums"] if enum["name"] in used],
-        "relations": [
-            relation
-            for relation in schema["relations"]
-            if relation["from"]["model"] in kept and relation["to"]["model"] in kept
-        ],
+        "relations": relations,
     }
+
+
+def _stub(model: dict[str, Any], fields: set[str]) -> dict[str, Any]:
+    """A model outside the export, as much of it as the project's models refer to: its key and
+    the columns they name."""
+    key = set(model["primaryKey"] or [])
+    return {
+        **model,
+        "fields": [
+            field
+            for field in columns(model)
+            if field["isId"] or field["name"] in key or field["name"] in fields
+        ],
+        "indexes": [],
+        "genericForeignKeys": [],
+        "documentation": None,
+        "external": True,
+    }
+
+
+def external(model: dict[str, Any]) -> bool:
+    """Whether a model is a stub of one outside the export (`scoped`)."""
+    return bool(model.get("external"))
 
 
 def related(schema: dict[str, Any]) -> list[str]:
     """The models with a relation, in the order of the schema: the ones a diagram of their own
     shows more of than the table of their columns does."""
     names = {end for r in schema["relations"] for end in (r["from"]["model"], r["to"]["model"])}
-    return [model["name"] for model in schema["models"] if model["name"] in names]
+    return [
+        model["name"]
+        for model in schema["models"]
+        if model["name"] in names and not external(model)
+    ]
 
 
 def neighborhood(schema: dict[str, Any], name: str) -> dict[str, Any]:
@@ -230,9 +273,11 @@ def _dbml_index(model: dict[str, Any], index: dict[str, Any]) -> str:
     if index["name"]:
         settings.append(f"name: {_dbml_string(index['name'])}")
     # DBML has neither partial indexes nor operator classes: they go in the note, not lost.
-    notes = []
+    notes = ["exclusion constraint"] if index["type"] == "exclusion" else []
     if index["method"] and index["method"] not in ("btree", "hash"):
         notes.append(f"using {index['method']}")
+    if index["descending"]:
+        notes.append(f"descending: {', '.join(index['descending'])}")
     notes += index["opclasses"]
     if index["include"]:
         notes.append(f"include ({', '.join(index['include'])})")
@@ -240,6 +285,10 @@ def _dbml_index(model: dict[str, Any], index: dict[str, Any]) -> str:
         notes.append(f"with ({', '.join(index['parameters'])})")
     if index["condition"]:
         notes.append(f"where {index['condition']}")
+    if index["nullsDistinct"] is not None:
+        notes.append("nulls distinct" if index["nullsDistinct"] else "nulls not distinct")
+    if index["deferrable"]:
+        notes.append(f"deferrable, initially {index['deferrable']}")
     if notes:
         settings.append(f"note: {_dbml_string('; '.join(notes))}")
     suffix = f" [{', '.join(settings)}]" if settings else ""
@@ -286,6 +335,8 @@ def _dbml_default(field: dict[str, Any]) -> str | None:
         return None
     if re.fullmatch(r"-?\d+(\.\d+)?", default) or default in ("True", "False"):
         return default.lower()
+    if default == "None":
+        return "null"
     if (default.startswith("'") and default.endswith("'")) or (
         default.startswith('"') and default.endswith('"')
     ):
@@ -376,8 +427,20 @@ def dbml(schema: dict[str, Any]) -> str:
                 lines.append(f"    ({', '.join(_column_of(model, c) for c in composite)}) [pk]")
             lines += [_dbml_index(model, index) for index in model["indexes"]]
             lines.append("  }")
+        if model["checks"]:
+            lines += ["", "  checks {"]
+            lines += [
+                f"    `{check['expression']}` [name: {_dbml_string(check['name'])}]"
+                for check in model["checks"]
+            ]
+            lines.append("  }")
         unmanaged = None if model["managed"] else "Not managed by Django (managed = False)."
-        note = "\n\n".join(text for text in (unmanaged, model["documentation"]) if text)
+        outside = (
+            f"Not in these docs: a model of the {model['app']} app, shown as far as it is referred to."
+            if external(model)
+            else None
+        )
+        note = "\n\n".join(text for text in (outside, unmanaged, model["documentation"]) if text)
         if note:
             lines += ["", f"  Note: {_dbml_note(note)}"]
         lines.append("}")
@@ -394,7 +457,10 @@ def dbml(schema: dict[str, Any]) -> str:
             continue
         referred, referring = relation_columns(tables, relation)
         arrow = "-" if relation["to"]["cardinality"] == "zero-one" else ">"
-        action = DBML_ACTIONS.get(relation["onDelete"] or "")
+        # SET(None) is what the database's `set null` does; SET of anything else has no action.
+        action = DBML_ACTIONS.get(
+            "SET_NULL" if relation["onDelete"] == "SET(None)" else relation["onDelete"] or ""
+        )
         settings = f" [delete: {action}]" if action else ""
         name = relation["to"]["field"] if len(referring) > 1 else referring[0]
         blocks.append(

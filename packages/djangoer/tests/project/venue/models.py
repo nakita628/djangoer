@@ -4,6 +4,7 @@ expressions and with conditions, long names."""
 
 import zoneinfo
 
+import django
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -159,3 +160,27 @@ HistoricalArticle = type(
         "Meta": type("Meta", (), {"app_label": "venue"}),
     },
 )
+
+
+# `condition` since Django 5.1, `check` before it.
+_CHECK = "condition" if django.VERSION[:2] >= (5, 1) else "check"
+
+
+class Price(models.Model):
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    discounted = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    category = models.CharField(max_length=30)
+    code = models.CharField(max_length=10)
+    # SET(None) and SET_DEFAULT, as Django's docs show them.
+    replaced_by = models.ForeignKey("self", on_delete=models.SET(None), null=True)
+    place = models.ForeignKey(Place, on_delete=models.SET_DEFAULT, default=None, null=True)
+
+    class Meta:
+        app_label = "venue"
+        constraints = [
+            models.CheckConstraint(**{_CHECK: Q(amount__gte=0)}, name="price_not_negative"),
+            models.UniqueConstraint(
+                fields=["code"], name="code_unique_deferred", deferrable=models.Deferrable.DEFERRED
+            ),
+        ]
+        indexes = [models.Index(fields=["category", "-amount"], name="category_amount")]

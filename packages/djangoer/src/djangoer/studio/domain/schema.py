@@ -324,6 +324,20 @@ def _object_field(
     }
 
 
+def _on_delete(action: Any) -> str | None:
+    """`on_delete` as it is written: `CASCADE`, `SET_NULL`… and `SET(None)`,
+    `SET(get_sentinel_user)` for the function `models.SET` makes, whose name says nothing."""
+    deconstruct = getattr(action, "deconstruct", None)
+    if callable(deconstruct):
+        try:
+            path, args, _kwargs = deconstruct()
+        except Exception:  # noqa: BLE001 - a function of its own that cannot say what it is
+            path, args = "", ()
+        if path.endswith(".SET") and len(args) == 1:
+            return f"SET({_repr(args[0])})"
+    return getattr(action, "__name__", None)
+
+
 def _relation_name(field: models.Field) -> str | None:
     """The name a relation was given: its `related_name`, when the model set one."""
     related_name = getattr(field.remote_field, "related_name", None)
@@ -402,12 +416,74 @@ def _kind(index: Any, model: type[models.Model]) -> dict[str, Any]:
         parameters = list(index.get_with_params()) if hasattr(index, "get_with_params") else []
     except Exception:  # noqa: BLE001 - a third-party index that cannot say them offline
         parameters = []
-    return {"method": method, "include": include, "parameters": parameters}
+    return {**_plain(), "method": method, "include": include, "parameters": parameters}
 
 
 def _plain() -> dict[str, Any]:
-    """The kind of an index Django makes for a column or a `unique_together`: a B-tree."""
-    return {"method": None, "include": [], "parameters": []}
+    """The kind of an index Django makes for a column or a `unique_together`: a B-tree, every
+    column ascending, checked as each row is written, NULLs as the database counts them."""
+    return {
+        "method": None,
+        "include": [],
+        "parameters": [],
+        "descending": [],
+        "deferrable": None,
+        "nullsDistinct": None,
+    }
+
+
+def _deferrable(constraint: Any) -> str | None:
+    """`deferrable=` as the docs say it: `deferred` (initially deferred) or `immediate`."""
+    deferrable = getattr(constraint, "deferrable", None)
+    return None if deferrable is None else str(getattr(deferrable, "name", deferrable)).lower()
+
+
+def _checks(model: type[models.Model], alias: str) -> list[dict[str, str]]:
+    """The `CheckConstraint`s of a model, each with the condition it checks, as SQL."""
+    out = []
+    for constraint in model._meta.constraints:
+        if not isinstance(constraint, models.CheckConstraint):
+            continue
+        # `condition` since Django 5.1, `check` before it.
+        condition = getattr(constraint, "condition", None) or getattr(constraint, "check", None)
+        out.append(
+            {"name": constraint.name, "expression": _condition(model, condition, alias) or ""}
+        )
+    return out
+
+
+def _exclusion(model: type[models.Model], constraint: Any, alias: str) -> dict[str, Any] | None:
+    """An `ExclusionConstraint` (PostgreSQL) as an index of its own kind: each column with the
+    operator no two rows may both match (`"during" WITH &&`), its method, its condition."""
+    if type(constraint).__name__ != "ExclusionConstraint":
+        return None
+    pairs = []
+    for expression, operator in constraint.expressions:
+        target = F(expression) if isinstance(expression, str) else expression
+        column = _field_of(model, target)
+        if column is None:
+            column = _sql(
+                model,
+                alias,
+                lambda query, compiler, _connection, e=target: compiler.compile(
+                    e.resolve_expression(query)
+                ),
+            ) or str(target)
+        pairs.append(f"{column} WITH {operator}")
+    return {
+        "type": "exclusion",
+        "name": constraint.name,
+        "dbName": constraint.name,
+        "fields": [],
+        "expressions": pairs,
+        "condition": _condition(model, constraint.condition, alias),
+        "opclasses": [],
+        **_plain(),
+        "method": str(constraint.index_type).lower(),
+        "include": [model._meta.get_field(name).attname for name in constraint.include or ()],
+        "deferrable": _deferrable(constraint),
+        "attribute": repr(constraint),
+    }
 
 
 def _condition(model: type[models.Model], condition: Q | None, alias: str) -> str | None:
@@ -506,6 +582,10 @@ def _indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]]:
             }
         )
     for constraint in meta.constraints:
+        exclusion = _exclusion(model, constraint, alias)
+        if exclusion is not None:
+            out.append(exclusion)
+            continue
         if not isinstance(constraint, models.UniqueConstraint):
             continue
         fields, expressions, opclasses = _expressions(model, constraint.expressions, alias)
@@ -529,6 +609,9 @@ def _indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]]:
                 "condition": condition,
                 "opclasses": [*opclasses, *constraint.opclasses],
                 **_kind(constraint, model),
+                "deferrable": _deferrable(constraint),
+                # Django 5.0's nulls_distinct: False is "NULLs count as equal".
+                "nullsDistinct": getattr(constraint, "nulls_distinct", None),
                 "attribute": f"UniqueConstraint({', '.join(declared)})",
             }
         )
@@ -553,6 +636,9 @@ def _indexes(model: type[models.Model], alias: str) -> list[dict[str, Any]]:
                 "condition": _condition(model, index.condition, alias),
                 "opclasses": [*opclasses, *index.opclasses],
                 **_kind(index, model),
+                "descending": [
+                    meta.get_field(name[1:]).attname for name in index.fields if name[:1] == "-"
+                ],
                 "attribute": f"{type(index).__name__}({', '.join(declared)})",
             }
         )
@@ -660,7 +746,7 @@ def build_model(
                         "name": _relation_name(field),
                         "fromFields": [field.attname],
                         "toFields": [field.target_field.attname],
-                        "onDelete": getattr(on_delete, "__name__", None),
+                        "onDelete": _on_delete(on_delete),
                         "onUpdate": None,
                     },
                     attributes=[],
@@ -683,6 +769,7 @@ def build_model(
         "primaryKey": key if len(key) > 1 else None,
         "indexes": _indexes(model, alias),
         "genericForeignKeys": _generic_foreign_keys(model),
+        "checks": _checks(model, alias),
         # Whether Django creates the table: `managed = False` is a table or a view made by
         # something else, whose indexes are the ones the model declares, not ones Django makes.
         "managed": bool(meta.managed),
@@ -748,7 +835,7 @@ def build_relations(
                                 "cardinality": "zero-one" if field.null else "one",
                             },
                             "to": {"model": child, "field": field.name, "cardinality": "zero-many"},
-                            "onDelete": getattr(on_delete, "__name__", None),
+                            "onDelete": _on_delete(on_delete),
                             "onUpdate": None,
                             "through": None,
                         }
@@ -778,7 +865,7 @@ def build_relations(
                         "field": field.attname,
                         "cardinality": "zero-one" if field.one_to_one else "zero-many",
                     },
-                    "onDelete": getattr(on_delete, "__name__", None),
+                    "onDelete": _on_delete(on_delete),
                     "onUpdate": None,
                     "through": None,
                 }
@@ -816,7 +903,7 @@ def _composite_relation(field: Any, known: Names) -> dict[str, Any] | None:
             "name": _relation_name(field),
             "fromFields": [column.attname for column in field.local_related_fields],
             "toFields": [column.attname for column in field.foreign_related_fields],
-            "onDelete": getattr(on_delete, "__name__", None),
+            "onDelete": _on_delete(on_delete),
             "onUpdate": None,
         },
         attributes=_attributes(field),

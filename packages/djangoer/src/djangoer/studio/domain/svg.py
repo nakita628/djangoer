@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from html import escape
 from typing import Any
 
-from .er import column_name, columns, is_key
+from .er import column_name, columns, external, is_key
 
 # The narrowest a card is; it widens to its longest line, up to the widest.
 NODE_WIDTH = 340
@@ -69,8 +69,10 @@ class Card:
     subtitle: str
     rows: list[tuple[str, str, str]]  # (name, type, marker): marker is PK, FK or nothing
     enum: bool = False
-    # Drawn with a dashed border: a model Django does not manage (`managed = False`).
+    # Drawn with a dashed border: a model Django does not manage (`managed = False`), or one
+    # outside the export, of which only the columns referred to are shown.
     unmanaged: bool = False
+    external: bool = False
     x: float = 0
     y: float = 0
     width: float = NODE_WIDTH
@@ -143,6 +145,7 @@ def _cards(schema: dict[str, Any], enum_rows: int | None) -> dict[str, Card]:
             model["dbName"] or "",
             rows,
             unmanaged=not model["managed"],
+            external=external(model),
         )
     for enum in schema["enums"]:
         rows = _enum_rows(enum["values"], enum_rows)
@@ -180,12 +183,12 @@ def _ranks(schema: dict[str, Any], cards: dict[str, Card]) -> dict[str, int]:
     return ranks
 
 
-def _enum_columns(enums: list[Card], height: float) -> list[list[Card]]:
-    """The enum cards in columns no taller than `height`, the tallest column of models: one
-    column of every enum would set the height of a large diagram on its own."""
+def _wrap(cards: list[Card], height: float) -> list[list[Card]]:
+    """Cards in columns no taller than `height` (one card at least in each): the enums of a
+    diagram, no taller than its tallest column of models, or the models around one model."""
     columns: list[list[Card]] = []
     used = height
-    for card in enums:
+    for card in cards:
         if columns and used + card.height <= height:
             columns[-1].append(card)
             used += card.height + ROW_GAP
@@ -214,11 +217,19 @@ def layout(
         by_rank.setdefault(rank, []).append(cards[name])
     columns = [by_rank[rank] for rank in sorted(by_rank)]
 
-    def height(column: list[Card]) -> float:
-        return sum(card.height for card in column) + ROW_GAP * (len(column) - 1)
+    tallest = max(map(_height, columns), default=0)
+    columns += _wrap([card for card in cards.values() if card.enum], tallest)
+    _place(columns)
+    return cards
 
-    tallest = max(map(height, columns), default=0)
-    columns += _enum_columns([card for card in cards.values() if card.enum], tallest)
+
+def _height(column: list[Card]) -> float:
+    return sum(card.height for card in column) + ROW_GAP * (len(column) - 1)
+
+
+def _place(columns: list[list[Card]]) -> None:
+    """Columns left to right, cards of a column top to bottom, a column as wide as its widest
+    card, so the gaps between columns, where the lines run, are straight."""
     x = float(MARGIN)
     for index, column in enumerate(columns):
         width = min(max([NODE_WIDTH, *map(_needed, column)]), MAX_NODE_WIDTH)
@@ -227,7 +238,72 @@ def layout(
             card.x, card.y, card.width, card.column = x, y, width, index
             y += card.height + ROW_GAP
         x += width + COLUMN_GAP
-    return cards
+
+
+# A model's own diagram: the models around it in columns no taller than this many times its own
+# card (and no lower than the floor), and no more than this many cards on a side, the others
+# named on one card.
+AROUND_HEIGHT = 3
+AROUND_FLOOR = 900
+AROUND_CARDS = 30
+
+
+def _sides(schema: dict[str, Any], center: str, cards: dict[str, Card]) -> tuple[list, list]:
+    """The models one model refers to (on its left, as parents are) and the ones that refer to
+    it (on its right), in the order of the relations, each once."""
+    left: list[str] = []
+    right: list[str] = []
+    for relation in schema["relations"]:
+        parent, child = relation["from"]["model"], relation["to"]["model"]
+        if parent == child or center not in (parent, child):
+            continue
+        other, side = (parent, left) if child == center else (child, right)
+        if other in cards and other not in left and other not in right:
+            side.append(other)
+    return left, right
+
+
+def _capped(names: list[str], cards: dict[str, Card], tables: dict[str, str]) -> list[Card]:
+    """The cards of one side, the ones past `AROUND_CARDS` named on a card of their own."""
+    if len(names) <= AROUND_CARDS:
+        return [cards[name] for name in names]
+    shown, hidden = names[: AROUND_CARDS - 1], names[AROUND_CARDS - 1 :]
+    rows = [(name, tables.get(name, ""), "") for name in hidden]
+    if len(rows) > ENUM_ROWS:
+        rows = [*rows[: ENUM_ROWS - 1], (f"… {len(rows) - ENUM_ROWS + 1} more", "", "")]
+    more = Card(f"more:{hidden[0]}", f"… {len(hidden)} more", "", rows, external=True)
+    return [*(cards[name] for name in shown), more]
+
+
+def layout_around(
+    schema: dict[str, Any],
+    center: str,
+    *,
+    enum_rows: int | None = ENUM_ROWS,
+    enums: bool = True,
+) -> dict[str, Card]:
+    """The diagram of one model (`er.neighborhood`): the model in the middle, the models it
+    refers to on its left and the ones that refer to it on its right, each side in columns no
+    taller than a few times the model's card, and the enums after them. A model many refer to
+    (a generic relation's target, a hub) is a few wide columns, not one tens of thousands of
+    pixels tall."""
+    cards = _cards(schema, enum_rows)
+    if not enums:
+        cards = {name: card for name, card in cards.items() if not card.enum}
+    middle = cards[center]
+    tables = {model["name"]: model["dbName"] or "" for model in schema["models"]}
+    left, right = _sides(schema, center, cards)
+    limit = max(middle.height * AROUND_HEIGHT, AROUND_FLOOR)
+    columns = [
+        # The column nearest the model first: reversed, it is the last on the left.
+        *reversed(_wrap(_capped(left, cards, tables), limit)),
+        [middle],
+        *_wrap(_capped(right, cards, tables), limit),
+    ]
+    tallest = max(map(_height, columns), default=0)
+    columns += _wrap([card for card in cards.values() if card.enum], tallest)
+    _place(columns)
+    return {card.name: card for column in columns for card in column}
 
 
 def _text(
@@ -321,10 +397,10 @@ def _card(card: Card, index: int) -> str:
                 room=kind_room,
             )
         )
-    if card.unmanaged:
+    if card.unmanaged or card.external:
         # On top of the header too: the whole card says Django does not make this table.
         parts.append(
-            f'<rect class="unmanaged" x="{card.x:g}" y="{card.y:g}" width="{width:g}" '
+            f'<rect class="{"external" if card.external else "unmanaged"}" x="{card.x:g}" y="{card.y:g}" width="{width:g}" '
             f'height="{card.height:g}" rx="8" fill="none" stroke="{COLORS["edge"]}" '
             'stroke-width="1.5" stroke-dasharray="6 4"/>'
         )
@@ -446,7 +522,10 @@ def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> li
                 f'L{x:g} {y + 7:g}" fill="none" stroke="{COLORS["edge"]}" stroke-width="1.4"/>'
             )
     for model in schema["models"]:
-        card = cards[model["name"]]
+        card = cards.get(model["name"])
+        if card is None:
+            # A model named on the "… more" card of a model's own diagram has no card to draw from.
+            continue
         for field in columns(model):
             enum = cards.get(f"enum:{field['type']}") if field["kind"] == "enum" else None
             if enum is None:
@@ -461,9 +540,19 @@ def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> li
     return parts
 
 
-def render(schema: dict[str, Any], *, enum_rows: int | None = ENUM_ROWS, enums: bool = True) -> str:
-    """The diagram of a schema as one SVG document."""
-    cards = layout(schema, enum_rows=enum_rows, enums=enums)
+def render(
+    schema: dict[str, Any],
+    *,
+    enum_rows: int | None = ENUM_ROWS,
+    enums: bool = True,
+    center: str | None = None,
+) -> str:
+    """The diagram of a schema as one SVG document; with `center`, the diagram of that model
+    (`layout_around`)."""
+    if center is None:
+        cards = layout(schema, enum_rows=enum_rows, enums=enums)
+    else:
+        cards = layout_around(schema, center, enum_rows=enum_rows, enums=enums)
     router = Router(cards)
     edges = _edges(schema, cards, router)
     # The tracks above the cards and the lanes right of the last column are part of the picture.

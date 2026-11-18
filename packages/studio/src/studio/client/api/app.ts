@@ -32,7 +32,7 @@ type Field = {
   attributes: string[]
 }
 type Index = {
-  type: 'id' | 'unique' | 'normal' | 'fulltext'
+  type: 'id' | 'unique' | 'normal' | 'fulltext' | 'exclusion'
   name: string | null
   dbName: string | null
   fields: string[]
@@ -42,9 +42,13 @@ type Index = {
   method: string | null
   include: string[]
   parameters: string[]
+  descending: string[]
+  deferrable: string | null
+  nullsDistinct: boolean | null
   attribute: string
 }
 type GenericForeignKey = { name: string; contentTypeField: string; objectIdField: string }
+type Check = { name: string; expression: string }
 type Location = { file: string; line: number }
 type Model = {
   name: string
@@ -56,6 +60,7 @@ type Model = {
   primaryKey: string[] | null
   indexes: Index[]
   genericForeignKeys: GenericForeignKey[]
+  checks: Check[]
   managed: boolean
   attributes: string[]
   location: Location | null

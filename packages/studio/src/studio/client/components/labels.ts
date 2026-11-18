@@ -17,4 +17,9 @@ export const CONSTRAINT_STYLES = {
   unique: { label: 'unique', legend: 'unique together', className: UNIQUE_BADGE },
   normal: { label: 'index', legend: 'index', className: 'bg-muted/15 text-muted' },
   fulltext: { label: 'fulltext', legend: 'full-text index', className: 'bg-muted/15 text-muted' },
+  exclusion: {
+    label: 'exclude',
+    legend: 'exclusion constraint',
+    className: 'bg-muted/15 text-muted',
+  },
 } as const

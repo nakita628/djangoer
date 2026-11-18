@@ -11,7 +11,7 @@ from ..brands import Offset
 from .base import Contract
 
 FieldKind = Literal["scalar", "object", "enum", "unsupported"]
-IndexType = Literal["id", "unique", "normal", "fulltext"]
+IndexType = Literal["id", "unique", "normal", "fulltext", "exclusion"]
 Cardinality = Literal["zero-one", "one", "zero-many", "many"]
 RelationOrigin = Literal["inferred", "annotated", "implicit-many-to-many", "generic"]
 Severity = Literal["error", "warning", "information", "hint"]
@@ -98,7 +98,20 @@ class Index(Contract):
     method: str | None
     include: list[str]
     parameters: list[str]
+    # The columns in descending order (`fields=["-price"]`).
+    descending: list[str]
+    # A constraint checked at the end of the transaction: `deferred` or `immediate` at first.
+    deferrable: str | None
+    # `nulls_distinct=`: False is "NULLs count as equal". None when the model does not say.
+    nulls_distinct: bool | None
     attribute: str
+
+
+class Check(Contract):
+    """A `CheckConstraint`: what every row must satisfy, as SQL."""
+
+    name: str
+    expression: str
 
 
 class GenericForeignKey(Contract):
@@ -120,6 +133,7 @@ class Model(Contract):
     primary_key: list[str] | None
     indexes: list[Index]
     generic_foreign_keys: list[GenericForeignKey]
+    checks: list[Check]
     # False for `managed = False`: Django neither creates nor changes the table.
     managed: bool
     attributes: list[str]

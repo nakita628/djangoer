@@ -236,6 +236,7 @@ const CONSTRAINT_STYLES = {
   unique: { label: 'UNIQUE', color: (palette: Palette) => palette.unique },
   normal: { label: 'INDEX', color: (palette: Palette) => palette.muted },
   fulltext: { label: 'FULLTEXT', color: (palette: Palette) => palette.muted },
+  exclusion: { label: 'EXCLUDE', color: (palette: Palette) => palette.muted },
 } as const
 
 /** One `@@id` / `@@unique` / `@@index` of a model: what it is, and the columns it covers. */

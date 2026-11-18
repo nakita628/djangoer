@@ -60,7 +60,8 @@ def table(text: str, name: str) -> str:
 
 
 def test_an_export_covers_the_projects_own_models_unless_asked_for_all():
-    own = export.schema_for("default", ROOT, everything=False)
+    scope = export.schema_for("default", ROOT, everything=False)
+    own = {**scope, "models": [model for model in scope["models"] if not er.external(model)]}
     assert [model["name"] for model in own["models"]] == [
         "Customer",
         "Product",
@@ -76,21 +77,24 @@ def test_an_export_covers_the_projects_own_models_unless_asked_for_all():
         "Rating",
         "Article",
         "HistoricalArticle",
+        "Price",
         "annex.Tag",
         # The models of the modern app, on the Django that has them.
         *(["Item"] if since(5, 0) else []),
         *(["OrderLine", "Shipment"] if since(5, 2) else []),
+        *(["Category"] if since(5, 0) else []),
         "Worker",
         "Job",
         "Document",
+        "Reservation",
     ]
     everything = export.schema_for("default", ROOT, everything=True)
-    assert "User" in [model["name"] for model in everything["models"]]
-    # A relation to a model that is left out is left out with it.
-    assert all(
-        relation["from"]["model"] != "User" and relation["to"]["model"] != "User"
-        for relation in shop()["relations"]
-    )
+    assert "Group" in [model["name"] for model in everything["models"]]
+    # The installed packages' models the project's refer to stay, as stubs (#31).
+    assert [model["name"] for model in scope["models"] if er.external(model)] == [
+        "ContentType",
+        "User",
+    ]
 
 
 def test_mermaid():
@@ -267,6 +271,9 @@ def test_indexes_are_the_ones_the_database_has():
         "method": None,
         "include": [],
         "parameters": [],
+        "descending": [],
+        "deferrable": None,
+        "nullsDistinct": None,
         "attribute": "Index(Lower(F(email)), name='event_email_lower')",
     }
     restriction = next(m for m in venue()["models"] if m["name"] == "PageViewRestriction")
@@ -718,10 +725,12 @@ def test_writing_the_docs_again_removes_the_diagram_of_a_model_that_is_gone(tmp_
 def chain(count: int, reach: int) -> dict:
     """Models in a chain, each referring to the one before it (a column each), and to the one
     `reach` before it too: those lines cross columns, over the cards."""
+    base = shop()
+    key = next(f for f in base["models"][0]["fields"] if f["name"] == "id")
 
     def column(name: str, foreign: bool) -> dict:
         return {
-            **next(f for f in shop()["models"][0]["fields"] if f["name"] == "id"),
+            **key,
             "name": name,
             "isId": not foreign,
             "isForeignKey": foreign,
@@ -731,7 +740,7 @@ def chain(count: int, reach: int) -> dict:
     names = [f"M{index}" for index in range(count)]
     models = [
         {
-            **shop()["models"][0],
+            **base["models"][0],
             "name": name,
             "dbName": name.lower(),
             "fields": [column("id", False), column("near_id", True), column("far_id", True)],
@@ -753,7 +762,7 @@ def chain(count: int, reach: int) -> dict:
 
     relations = [relation(names[i - 1], names[i], "near_id") for i in range(1, count)]
     relations += [relation(names[i - reach], names[i], "far_id") for i in range(reach, count)]
-    return {**shop(), "models": models, "enums": [], "relations": relations}
+    return {**base, "models": models, "enums": [], "relations": relations}
 
 
 def test_svg_lines_over_the_cards_share_a_track_when_they_do_not_overlap():
@@ -840,3 +849,137 @@ def test_an_index_says_its_method_include_and_parameters():
     assert (
         "    (seen) [name: 'document_seen', note: 'using brin; with (pages_per_range = 16)']"
     ) in text
+
+
+def test_on_delete_set_and_every_action_read_as_written():
+    relations = [r for r in venue()["relations"] if r["to"]["model"] == "Price"]
+    assert {r["to"]["field"]: r["onDelete"] for r in relations} == {
+        "replaced_by_id": "SET(None)",
+        "place_id": "SET_DEFAULT",
+    }
+    docs = markdown.render(venue(), sql="", diagram=None)
+    assert "- `replaced_by_id` → [Price](#price).`id`, on delete set (None)" in docs
+    assert "- `place_id` → [Place](#place).`id`, on delete set default" in docs
+    text = er.dbml(venue())
+    # SET(None) is what the database's `set null` does.
+    assert "venue_price.replaced_by_id > venue_price.id [delete: set null]" in text
+    assert "venue_price.place_id > venue_place.id [delete: set default]" in text
+    # default=None is a literal default, null.
+    assert "  place_id bigint [default: null]" in table(text, "venue_price")
+
+
+def test_a_relation_to_an_installed_packages_model_is_kept_with_a_stub():
+    scope = export.schema_for("default", ROOT, everything=False)
+    user = next(m for m in scope["models"] if m["name"] == "User")
+    # Its key, as much as the project's models refer to; not every column of auth_user.
+    assert [field["name"] for field in user["fields"]] == ["id"]
+    assert any(
+        r["from"]["model"] == "User" and r["to"]["model"] == "Event" for r in scope["relations"]
+    )
+    files = export.render_docs("default", scope)
+    docs = files["README.md"].decode()
+    assert "- `owner_id` → `User`.`id` (auth, not in these docs), on delete cascade" in docs
+    # No section, no diagram of its own, and no CREATE TABLE.
+    assert "## User\n" not in docs
+    assert "tables/User.svg" not in files
+    assert 'CREATE TABLE "auth_user"' not in docs
+    text = er.dbml(scope)
+    assert table(text, "auth_user").startswith("Table auth_user {\n  id integer [pk, increment]\n")
+    assert "Not in these docs: a model of the auth app" in table(text, "auth_user")
+    assert "Ref venue_event_owner_id_fk: venue_event.owner_id > auth_user.id" in text
+    assert "    auth_user ||--o{ venue_event" in er.mermaid(scope)
+    assert 'class="external"' in files["tables/Event.svg"].decode()
+
+
+def test_checks_exclusions_descending_columns_and_deferrable():
+    price = next(m for m in venue()["models"] if m["name"] == "Price")
+    assert price["checks"] == [{"name": "price_not_negative", "expression": "\"amount\" >= '0'"}]
+    by_name = {index["name"]: index for index in price["indexes"]}
+    assert by_name["category_amount"]["descending"] == ["amount"]
+    assert by_name["code_unique_deferred"]["deferrable"] == "deferred"
+    docs = markdown.render(venue(), sql="", diagram=None)
+    assert "Checks:\n\n- `price_not_negative`: `\"amount\" >= '0'`" in docs
+    assert "- index `category_amount` on `category`, `amount` desc" in docs
+    assert "- unique `code_unique_deferred` on `code`, deferrable (initially deferred)" in docs
+    text = table(er.dbml(venue()), "venue_price")
+    assert "  checks {\n    `\"amount\" >= '0'` [name: 'price_not_negative']\n  }" in text
+    assert "    (category, amount) [name: 'category_amount', note: 'descending: amount']" in text
+    reservation = next(m for m in legacy()["models"] if m["name"] == "Reservation")
+    exclusion = reservation["indexes"][0]
+    assert (exclusion["type"], exclusion["method"]) == ("exclusion", "gist")
+    assert exclusion["expressions"] == ["during WITH &&", "room WITH ="]
+    docs = markdown.render(legacy(), sql="", diagram=None)
+    assert "- gist exclusion `exclude_overlapping` on `during WITH &&`, `room WITH =` where" in docs
+
+
+@pytest.mark.skipif(not since(5, 0), reason="nulls_distinct is Django 5.0's")
+def test_nulls_distinct_is_said():
+    category = next(m for m in modern()["models"] if m["name"] == "Category")
+    assert category["indexes"][-1]["nullsDistinct"] is False
+    docs = markdown.render(modern(), sql="", diagram=None)
+    assert (
+        "- unique `category_slug_unique` on `project`, `parent_id`, `slug`, nulls not distinct"
+    ) in docs
+
+
+@pytest.mark.skipif(
+    not since(5, 0) or since(6, 1), reason="on 6.1, nulls distinct asks no version of the server"
+)
+def test_docs_on_postgresql_assume_a_version_when_the_server_cannot_be_asked(postgresql):
+    schema = export.schema_for(postgresql, ROOT, everything=False)
+    sql = markdown.create_sql(schema, names(), postgresql)
+    assert sql.startswith("-- Written for PostgreSQL 17, assumed: the database could not be asked.")
+    assert 'CREATE TABLE "modern_category"' in sql
+    assert "UNIQUE NULLS NOT DISTINCT" in sql
+    connection = connections[postgresql]
+    # Forgotten afterwards: a connection that reaches its server later asks it.
+    assert "pg_version" not in vars(connection)
+    assert not any("postgresql_1" in key for key in vars(connection.features))
+    assert connection.connection is None
+
+
+def test_docs_on_postgresql_write_a_database_default_without_a_database(postgresql):
+    schema = export.schema_for(postgresql, ROOT, everything=False)
+    sql = markdown.create_sql(schema, names(), postgresql)
+    assert "-- Not collected" not in sql
+    if since(5, 0):
+        assert '"stock" integer DEFAULT 0 NOT NULL' in sql
+
+
+def hub(count: int) -> dict:
+    """One model and `count` models that refer to it."""
+    base = shop()
+    customer, order = base["models"][0], base["models"][2]
+    relation = next(r for r in base["relations"] if r["to"]["model"] == "Order")
+    return {
+        **base,
+        "models": [
+            customer,
+            *({**order, "name": f"Thing{i}", "dbName": f"thing{i}"} for i in range(count)),
+        ],
+        "relations": [
+            {**relation, "id": f"r{i}", "to": {**relation["to"], "model": f"Thing{i}"}}
+            for i in range(count)
+        ],
+        "enums": [],
+    }
+
+
+def test_a_models_own_diagram_wraps_the_models_around_it_and_names_the_rest():
+    schema = er.neighborhood(hub(60), "Customer")
+    cards = svg.layout_around(schema, "Customer")
+    customer = cards["Customer"]
+    others = [card for card in cards.values() if card.name != "Customer"]
+    # The models that refer to it are on its right, in columns no taller than the limit.
+    assert all(card.column > customer.column for card in others)
+    limit = max(customer.height * svg.AROUND_HEIGHT, svg.AROUND_FLOOR)
+    assert all(card.y + card.height <= svg.MARGIN + limit for card in others)
+    assert len({card.column for card in others}) > 1
+    # 29 cards and one naming the 31 others.
+    assert len(others) == svg.AROUND_CARDS
+    more = next(card for card in others if card.title.startswith("…"))
+    assert more.title == "… 31 more"
+    assert more.rows[0][0] == "Thing29"
+    order = svg.layout_around(er.neighborhood(shop(), "Order"), "Order")
+    # Order refers to Customer (on its left) and declares the many-to-many to Product (right).
+    assert order["Customer"].column < order["Order"].column < order["Product"].column
