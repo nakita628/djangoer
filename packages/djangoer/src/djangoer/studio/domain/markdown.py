@@ -196,10 +196,14 @@ def _default(field: dict[str, Any]) -> str:
     return _code(field["default"])
 
 
-def _model(model: dict[str, Any], schema: dict[str, Any], links: dict[str, str]) -> list[str]:
+def _model(
+    model: dict[str, Any], schema: dict[str, Any], links: dict[str, str], diagram: str | None
+) -> list[str]:
     lines = [f"## {model['name']}", "", f"Table `{model['dbName']}`, app `{model['app']}`."]
     if model["documentation"]:
         lines += ["", model["documentation"]]
+    if diagram is not None:
+        lines += ["", f"![{model['name']} and the models it relates to]({diagram})"]
     lines += [
         "",
         "| Column | Field | Type | Null | Key | Default | Description |",
@@ -249,11 +253,18 @@ def _mermaid_block(text: str) -> list[str]:
     return [note]
 
 
-def render(schema: dict[str, Any], *, sql: str, diagram: str | None) -> str:
+def render(
+    schema: dict[str, Any],
+    *,
+    sql: str,
+    diagram: str | None,
+    tables: dict[str, str] | None = None,
+) -> str:
     """The docs of a schema, as one Markdown document.
 
     `diagram` is the path of the diagram to show (an SVG written beside the document); without
     one, the diagram is the Mermaid block, which GitHub and most viewers draw themselves.
+    `tables` is the path of each model's own diagram, shown in its section, by model.
     """
     lines = ["# Schema docs", ""]
     if diagram is not None:
@@ -275,7 +286,8 @@ def render(schema: dict[str, Any], *, sql: str, diagram: str | None) -> str:
             "",
         ]
     for model in schema["models"]:
-        lines += [*_model(model, schema, links), ""]
+        own = (tables or {}).get(model["name"])
+        lines += [*_model(model, schema, links, own), ""]
     if schema["enums"]:
         lines += ["# Enums", ""]
         for enum in schema["enums"]:

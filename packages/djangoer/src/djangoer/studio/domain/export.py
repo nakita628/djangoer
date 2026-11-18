@@ -14,6 +14,8 @@ from ..inputs import ExportFile
 from . import er, markdown, svg
 from .schema import build_schema, names
 
+# The directory of the docs that holds a diagram per model.
+TABLES = "tables"
 # What `djangoer er -o` writes, by the extension of the file it is given.
 FORMATS = (".md", ".dbml", ".svg", ".png")
 
@@ -70,12 +72,19 @@ def render_docs(
     enum_rows: int | None = svg.ENUM_ROWS,
     enums: bool = True,
 ) -> dict[str, bytes]:
-    """The docs of a schema as the files of a directory: README.md and the diagram it shows."""
+    """The docs of a schema as the files of a directory: README.md, the diagram it opens with
+    (er.svg), and one diagram per model with a relation (tables/<Model>.svg: the model and the
+    models it joins), shown in the model's section."""
     sql = markdown.create_sql(schema, names(), alias)
-    return {
-        "README.md": markdown.render(schema, sql=sql, diagram="er.svg").encode(),
+    tables = {name: f"{TABLES}/{name}.svg" for name in er.related(schema)}
+    files = {
+        "README.md": markdown.render(schema, sql=sql, diagram="er.svg", tables=tables).encode(),
         "er.svg": svg.render(schema, enum_rows=enum_rows, enums=enums).encode(),
     }
+    for name, path in tables.items():
+        part = er.neighborhood(schema, name)
+        files[path] = svg.render(part, enum_rows=enum_rows, enums=enums).encode()
+    return files
 
 
 # What Studio hands the browser to save, by name, with the type the browser is told it is.

@@ -52,6 +52,34 @@ def scoped(schema: dict[str, Any], *, everything: bool) -> dict[str, Any]:
     }
 
 
+def related(schema: dict[str, Any]) -> list[str]:
+    """The models with a relation, in the order of the schema: the ones a diagram of their own
+    shows more of than the table of their columns does."""
+    names = {end for r in schema["relations"] for end in (r["from"]["model"], r["to"]["model"])}
+    return [model["name"] for model in schema["models"] if model["name"] in names]
+
+
+def neighborhood(schema: dict[str, Any], name: str) -> dict[str, Any]:
+    """The schema of one model's diagram: the model, the models it joins, the relations between
+    it and them, and the enums their fields use."""
+    relations = [
+        relation
+        for relation in schema["relations"]
+        if name in (relation["from"]["model"], relation["to"]["model"])
+    ]
+    names = {name, *(end for r in relations for end in (r["from"]["model"], r["to"]["model"]))}
+    models = [model for model in schema["models"] if model["name"] in names]
+    used = {
+        field["type"] for model in models for field in model["fields"] if field["kind"] == "enum"
+    }
+    return {
+        **schema,
+        "models": models,
+        "relations": relations,
+        "enums": [enum for enum in schema["enums"] if enum["name"] in used],
+    }
+
+
 def columns(model: dict[str, Any]) -> list[dict[str, Any]]:
     """The fields of a model that are columns of its table."""
     return [field for field in model["fields"] if field["kind"] != "object"]

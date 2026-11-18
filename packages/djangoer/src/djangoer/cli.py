@@ -236,7 +236,9 @@ def write_er(options: argparse.Namespace) -> int:
 
 
 def write_docs(options: argparse.Namespace) -> int:
-    """`djangoer docs -o docs/schema`: README.md with every model, and the diagram it shows."""
+    """`djangoer docs -o docs/schema`: README.md with every model, the diagram it opens with, and
+    one per model with a relation in tables/. The diagram of a model that is gone is removed, so a
+    directory written again holds none that is stale."""
     import django
 
     django.setup()
@@ -249,8 +251,16 @@ def write_docs(options: argparse.Namespace) -> int:
         options.database, schema, enum_rows=enum_rows(options), enums=options.enums
     )
     for name, content in files.items():
-        (directory / name).write_bytes(content)
-        _print(f"wrote {directory / name}")
+        target = directory / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        _print(f"wrote {target}")
+    tables = directory / export.TABLES
+    if tables.is_dir():
+        for stale in sorted(tables.glob("*.svg")):
+            if f"{export.TABLES}/{stale.name}" not in files:
+                stale.unlink()
+                _print(f"removed {stale}")
     return 0
 
 

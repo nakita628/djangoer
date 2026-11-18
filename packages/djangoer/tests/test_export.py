@@ -139,7 +139,14 @@ def test_er_by_extension():
 
 def test_docs_are_markdown_with_the_schema_as_sql():
     files = export.render_docs("default", shop())
-    assert set(files) == {"README.md", "er.svg"}
+    # Every model of the shop has a relation, so each has a diagram of its own.
+    assert set(files) == {
+        "README.md",
+        "er.svg",
+        "tables/Customer.svg",
+        "tables/Product.svg",
+        "tables/Order.svg",
+    }
     text = files["README.md"].decode()
     assert text.startswith("# Schema docs\n\n![ER diagram](er.svg)\n")
     assert 'CREATE TABLE "orders"' in text
@@ -173,6 +180,7 @@ def test_the_commands_write_the_files(tmp_path, capsys):
     assert cli.write_docs(docs) == 0
     assert (tmp_path / "docs" / "README.md").is_file()
     assert (tmp_path / "docs" / "er.svg").is_file()
+    assert (tmp_path / "docs" / "tables" / "Order.svg").is_file()
 
 
 def test_studio_hands_the_files_over(client):
@@ -653,3 +661,48 @@ def test_a_python_default_and_a_database_default_are_apart():
     product = next(m for m in shop()["models"] if m["name"] == "Product")
     kind = next(f for f in product["fields"] if f["name"] == "kind")
     assert (kind["default"], kind["dbDefault"], kind["generated"]) == ("'book'", None, None)
+
+
+def test_a_model_with_a_relation_has_a_diagram_of_its_own():
+    files = export.render_docs("default", venue())
+    text = files["README.md"].decode()
+    # In its section, under the table name and the docstring.
+    assert (
+        "## Rating\n\nTable `venue_rating`, app `venue`.\n\nA row of any model: the pair of "
+        "columns names it.\n\n![Rating and the models it relates to](tables/Rating.svg)\n"
+    ) in text
+    # A model with no relation has none: its card would say what its table of columns says.
+    assert "Connection" not in er.related(venue())
+    assert "tables/Connection.svg" not in files
+    assert "![Connection and" not in text
+
+
+def test_the_diagram_of_a_model_is_the_model_and_the_models_it_joins():
+    part = er.neighborhood(shop(), "Customer")
+    # Customer is referred to by Order only; Product, which Order joins, is not Customer's.
+    assert [model["name"] for model in part["models"]] == ["Customer", "Order"]
+    assert all("Customer" in (r["from"]["model"], r["to"]["model"]) for r in part["relations"])
+    assert part["enums"] == []
+    order = er.neighborhood(shop(), "Order")
+    assert [model["name"] for model in order["models"]] == ["Customer", "Product", "Order"]
+    # Product's enum comes with it.
+    assert [enum["name"] for enum in order["enums"]] == ["ProductKind"]
+    document = export.render_docs("default", shop())["tables/Customer.svg"].decode()
+    assert document.count('class="model-node"') == 2
+    assert ">Product</text>" not in document
+
+
+def test_writing_the_docs_again_removes_the_diagram_of_a_model_that_is_gone(tmp_path):
+    docs = Namespace(
+        database="default", all=False, enum_values=12, enums=True, output=str(tmp_path)
+    )
+    gone = tmp_path / "tables" / "Gone.svg"
+    gone.parent.mkdir()
+    gone.write_text("<svg/>")
+    kept = tmp_path / "tables" / "notes.txt"
+    kept.write_text("mine")
+    assert cli.write_docs(docs) == 0
+    assert not gone.exists()
+    assert (tmp_path / "tables" / "Order.svg").is_file()
+    # Only the diagrams are the command's to remove.
+    assert kept.read_text() == "mine"

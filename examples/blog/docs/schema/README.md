@@ -45,6 +45,8 @@ Table `blog_author`, app `blog`.
 
 Someone who writes posts.
 
+![Author and the models it relates to](tables/Author.svg)
+
 | Column | Field | Type | Null | Key | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `id` | `BigAutoField` | `integer` |  | PK | `autoincrement()` |  |
@@ -63,6 +65,8 @@ Relations:
 
 Table `blog_tag`, app `blog`.
 
+![Tag and the models it relates to](tables/Tag.svg)
+
 | Column | Field | Type | Null | Key | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `id` | `BigAutoField` | `integer` |  | PK | `autoincrement()` |  |
@@ -77,6 +81,8 @@ Relations:
 Table `blog_post`, app `blog`.
 
 An article, a draft until it is published.
+
+![Post and the models it relates to](tables/Post.svg)
 
 | Column | Field | Type | Null | Key | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -109,6 +115,8 @@ Relations:
 ## Comment
 
 Table `blog_comment`, app `blog`.
+
+![Comment and the models it relates to](tables/Comment.svg)
 
 | Column | Field | Type | Null | Key | Default | Description |
 | --- | --- | --- | --- | --- | --- | --- |
