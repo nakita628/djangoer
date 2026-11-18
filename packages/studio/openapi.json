@@ -3,7 +3,7 @@
   "info": {
     "title": "Djangoer Studio",
     "description": "The API behind Djangoer Studio: the schema, the database, the Django ORM playground and the docs.",
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "servers": [
     {
@@ -2956,6 +2956,31 @@
             "type": "array",
             "title": "Opclasses"
           },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Include"
+          },
+          "parameters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Parameters"
+          },
           "attribute": {
             "type": "string",
             "title": "Attribute"
@@ -2971,6 +2996,9 @@
           "expressions",
           "condition",
           "opclasses",
+          "method",
+          "include",
+          "parameters",
           "attribute"
         ],
         "title": "Index"
@@ -3137,6 +3165,10 @@
             "type": "array",
             "title": "Genericforeignkeys"
           },
+          "managed": {
+            "type": "boolean",
+            "title": "Managed"
+          },
           "attributes": {
             "items": {
               "type": "string"
@@ -3171,6 +3203,7 @@
           "primaryKey",
           "indexes",
           "genericForeignKeys",
+          "managed",
           "attributes",
           "location",
           "own"

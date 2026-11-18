@@ -275,6 +275,9 @@ def _directives(model: dict[str, Any]) -> list[dict[str, Any]]:
                     *index["fields"],
                     *index["expressions"],
                     *index["opclasses"],
+                    *([f"using {index['method']}"] if index["method"] else []),
+                    *([f"include {', '.join(index['include'])}"] if index["include"] else []),
+                    *([f"with {', '.join(index['parameters'])}"] if index["parameters"] else []),
                     *([f"where {index['condition']}"] if index["condition"] else []),
                 ],
             }

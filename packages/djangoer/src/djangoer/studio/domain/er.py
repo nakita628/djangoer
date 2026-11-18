@@ -52,6 +52,34 @@ def scoped(schema: dict[str, Any], *, everything: bool) -> dict[str, Any]:
     }
 
 
+def related(schema: dict[str, Any]) -> list[str]:
+    """The models with a relation, in the order of the schema: the ones a diagram of their own
+    shows more of than the table of their columns does."""
+    names = {end for r in schema["relations"] for end in (r["from"]["model"], r["to"]["model"])}
+    return [model["name"] for model in schema["models"] if model["name"] in names]
+
+
+def neighborhood(schema: dict[str, Any], name: str) -> dict[str, Any]:
+    """The schema of one model's diagram: the model, the models it joins, the relations between
+    it and them, and the enums their fields use."""
+    relations = [
+        relation
+        for relation in schema["relations"]
+        if name in (relation["from"]["model"], relation["to"]["model"])
+    ]
+    names = {name, *(end for r in relations for end in (r["from"]["model"], r["to"]["model"]))}
+    models = [model for model in schema["models"] if model["name"] in names]
+    used = {
+        field["type"] for model in models for field in model["fields"] if field["kind"] == "enum"
+    }
+    return {
+        **schema,
+        "models": models,
+        "relations": relations,
+        "enums": [enum for enum in schema["enums"] if enum["name"] in used],
+    }
+
+
 def columns(model: dict[str, Any]) -> list[dict[str, Any]]:
     """The fields of a model that are columns of its table."""
     return [field for field in model["fields"] if field["kind"] != "object"]
@@ -146,12 +174,21 @@ def _dbml_type(field: dict[str, Any]) -> str:
 
 
 def _dbml_native(text: str) -> str:
-    """A type as the database names it; one of several words (`double precision`) is quoted."""
-    return f'"{text}"' if re.search(r"\s", text) else text
+    """A type as the database names it. A plain name (`text`, `varchar(254)`, `text[]`) is
+    written as it is; anything else is quoted: several words (`double precision`), a sized
+    array (`varchar(64)[]`), which DBML does not take bare."""
+    plain = re.fullmatch(r"\w+(\(\d+(,\d+)?\)|\[\])?", text)
+    return text if plain else '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def _dbml_string(text: str) -> str:
     return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def _dbml_note(text: str) -> str:
+    """A note of several lines, between three quotes: a quote or a backslash in it escaped, so
+    a docstring that ends with a quote does not end the note."""
+    return "'''" + text.replace("\\", "\\\\").replace("'", "\\'") + "'''"
 
 
 def _dbml_quoted(text: str) -> str:
@@ -187,14 +224,24 @@ def _dbml_index(model: dict[str, Any], index: dict[str, Any]) -> str:
     parts = [_column_of(model, name) for name in index["fields"]]
     parts += [f"`{expression}`" for expression in index["expressions"]]
     settings = ["unique"] if index["type"] == "unique" else []
+    # DBML names two methods; the others (gin, brin, hnsw…) go in the note.
+    if index["method"] in ("btree", "hash"):
+        settings.append(f"type: {index['method']}")
     if index["name"]:
         settings.append(f"name: {_dbml_string(index['name'])}")
     # DBML has neither partial indexes nor operator classes: they go in the note, not lost.
-    notes = [*index["opclasses"]]
+    notes = []
+    if index["method"] and index["method"] not in ("btree", "hash"):
+        notes.append(f"using {index['method']}")
+    notes += index["opclasses"]
+    if index["include"]:
+        notes.append(f"include ({', '.join(index['include'])})")
+    if index["parameters"]:
+        notes.append(f"with ({', '.join(index['parameters'])})")
     if index["condition"]:
         notes.append(f"where {index['condition']}")
     if notes:
-        settings.append(f"note: {_dbml_string(', '.join(notes))}")
+        settings.append(f"note: {_dbml_string('; '.join(notes))}")
     suffix = f" [{', '.join(settings)}]" if settings else ""
     return f"    ({', '.join(parts)}){suffix}"
 
@@ -243,8 +290,19 @@ def _dbml_default(field: dict[str, Any]) -> str | None:
         default.startswith('"') and default.endswith('"')
     ):
         return _dbml_string(default[1:-1])
-    # A callable or an expression: `now()`, `dict()`.
-    return f"`{default}`"
+    # A callable (`dict()`, `now()`): Python calls it for a new row, the database has no default.
+    # A backticked default would read as an SQL expression; the column's note says it instead.
+    return None
+
+
+def _python_default(field: dict[str, Any]) -> str | None:
+    """What the note of a column says of a default only Python gives: a callable's."""
+    default = field["default"]
+    if field["dbDefault"] is not None or default in (None, "autoincrement()"):
+        return None
+    if _dbml_default(field) is not None:
+        return None
+    return f"default in Python: {default}"
 
 
 def _dbml_column(field: dict[str, Any], note: str | None = None) -> str:
@@ -266,7 +324,9 @@ def _dbml_settings(field: dict[str, Any], note: str | None = None) -> str:
     if field["isRequired"] and not field["isId"]:
         settings.append("not null")
     generated = f"generated: {field['generated']}" if field["generated"] else None
-    notes = [text for text in (field["documentation"], generated, note) if text]
+    notes = [
+        text for text in (field["documentation"], generated, _python_default(field), note) if text
+    ]
     if notes:
         settings.append(f"note: {_dbml_string('. '.join(notes))}")
     return f" [{', '.join(settings)}]" if settings else ""
@@ -316,8 +376,10 @@ def dbml(schema: dict[str, Any]) -> str:
                 lines.append(f"    ({', '.join(_column_of(model, c) for c in composite)}) [pk]")
             lines += [_dbml_index(model, index) for index in model["indexes"]]
             lines.append("  }")
-        if model["documentation"]:
-            lines += ["", f"  Note: '''{model['documentation']}'''"]
+        unmanaged = None if model["managed"] else "Not managed by Django (managed = False)."
+        note = "\n\n".join(text for text in (unmanaged, model["documentation"]) if text)
+        if note:
+            lines += ["", f"  Note: {_dbml_note(note)}"]
         lines.append("}")
         blocks.append("\n".join(lines))
     for relation in schema["relations"]:

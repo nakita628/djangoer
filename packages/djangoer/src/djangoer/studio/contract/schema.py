@@ -93,6 +93,11 @@ class Index(Contract):
     condition: str | None
     # The operator class of each column, where one is named: `varchar_pattern_ops`.
     opclasses: list[str]
+    # How it is made: its method when not a B-tree (`gin`, `brin`, `hnsw`), the columns it
+    # includes, and its storage parameters (`m = 16`).
+    method: str | None
+    include: list[str]
+    parameters: list[str]
     attribute: str
 
 
@@ -115,6 +120,8 @@ class Model(Contract):
     primary_key: list[str] | None
     indexes: list[Index]
     generic_foreign_keys: list[GenericForeignKey]
+    # False for `managed = False`: Django neither creates nor changes the table.
+    managed: bool
     attributes: list[str]
     location: Location | None
     # The project's own model, not an installed package's: in the project's directory.

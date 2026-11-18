@@ -39,6 +39,9 @@ type Index = {
   expressions: string[]
   condition: string | null
   opclasses: string[]
+  method: string | null
+  include: string[]
+  parameters: string[]
   attribute: string
 }
 type GenericForeignKey = { name: string; contentTypeField: string; objectIdField: string }
@@ -53,6 +56,7 @@ type Model = {
   primaryKey: string[] | null
   indexes: Index[]
   genericForeignKeys: GenericForeignKey[]
+  managed: boolean
   attributes: string[]
   location: Location | null
   own: boolean

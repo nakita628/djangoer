@@ -8,6 +8,7 @@ other, parents to the left, so most lines run left to right.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from html import escape
 from typing import Any
@@ -68,6 +69,8 @@ class Card:
     subtitle: str
     rows: list[tuple[str, str, str]]  # (name, type, marker): marker is PK, FK or nothing
     enum: bool = False
+    # Drawn with a dashed border: a model Django does not manage (`managed = False`).
+    unmanaged: bool = False
     x: float = 0
     y: float = 0
     width: float = NODE_WIDTH
@@ -134,7 +137,13 @@ def _cards(schema: dict[str, Any], enum_rows: int | None) -> dict[str, Card]:
             )
             for field in columns(model)
         ]
-        cards[model["name"]] = Card(model["name"], model["name"], model["dbName"] or "", rows)
+        cards[model["name"]] = Card(
+            model["name"],
+            model["name"],
+            model["dbName"] or "",
+            rows,
+            unmanaged=not model["managed"],
+        )
     for enum in schema["enums"]:
         rows = _enum_rows(enum["values"], enum_rows)
         cards[f"enum:{enum['name']}"] = Card(
@@ -312,6 +321,13 @@ def _card(card: Card, index: int) -> str:
                 room=kind_room,
             )
         )
+    if card.unmanaged:
+        # On top of the header too: the whole card says Django does not make this table.
+        parts.append(
+            f'<rect class="unmanaged" x="{card.x:g}" y="{card.y:g}" width="{width:g}" '
+            f'height="{card.height:g}" rx="8" fill="none" stroke="{COLORS["edge"]}" '
+            'stroke-width="1.5" stroke-dasharray="6 4"/>'
+        )
     parts.append("</g>")
     return "".join(parts)
 
@@ -323,41 +339,63 @@ def _line(points: list[tuple[float, float]]) -> str:
 LANE = 9
 
 
+class Lanes:
+    """Parallel lanes, each a run of segments that do not meet: a segment takes the first lane
+    where it is clear of every other by a lane's width, and a new lane only when none is. Two
+    lines whose spans do not overlap share a lane, so a large diagram has as many lanes as
+    lines that run side by side, not as many as lines."""
+
+    def __init__(self) -> None:
+        self.taken: list[list[tuple[float, float]]] = []
+
+    def take(self, low: float, high: float) -> int:
+        for index, spans in enumerate(self.taken):
+            if all(high + LANE <= start or low - LANE >= end for start, end in spans):
+                spans.append((low, high))
+                return index
+        self.taken.append([(low, high)])
+        return len(self.taken) - 1
+
+    def __len__(self) -> int:
+        return len(self.taken)
+
+
 class Router:
-    """Lines between cards, in right angles, none through a card and no two on one track.
+    """Lines between cards, in right angles, none through a card and none on another.
 
     A line to the next column bends once, in the gap between the two. A line to a card further
     away would cross the columns in between, so it rises to a track above every card, runs
-    there, and comes down in the gap before its target. Each vertical run and each track is
-    taken by one line: the next one gets the lane beside it.
+    there, and comes down in the gap before its target. The vertical runs of a gap and the
+    tracks are lanes (`Lanes`): a line takes the first one where it meets no other.
     """
 
     def __init__(self, cards: dict[str, Card]):
-        self.gaps: dict[float, int] = {}
-        self.tracks = 0
+        self.gaps: dict[float, Lanes] = {}
+        self.tracks = Lanes()
         self.top = min((card.y for card in cards.values()), default=MARGIN)
 
-    def _gap(self, x: float) -> float:
-        """A free vertical lane in the gap that starts at `x`."""
-        lane = self.gaps.get(x, 0)
-        self.gaps[x] = lane + 1
+    def _gap(self, x: float, low: float, high: float) -> float:
+        """A lane in the gap that starts at `x`, clear from `low` to `high`."""
+        lane = self.gaps.setdefault(x, Lanes()).take(low, high)
         return x + STUB + lane * LANE
 
-    def _track(self) -> float:
-        self.tracks += 1
-        return self.top - LANE * self.tracks - 4
+    def _track(self, low: float, high: float) -> float:
+        """A track above the cards, clear from `low` to `high`."""
+        return self.top - LANE * (self.tracks.take(low, high) + 1) - 4
 
     def between(self, source: Card, source_y: float, target: Card, target_y: float):
         start = (source.x + source.width, source_y)
         distance = target.column - source.column
+        low, high = min(source_y, target_y), max(source_y, target_y)
         if distance == 1:
-            middle = self._gap(start[0])
+            middle = self._gap(start[0], low, high)
             return [start, (middle, start[1]), (middle, target_y), (target.x, target_y)]
         if distance > 1:
-            out = self._gap(start[0])
+            # Up to a track above every card: the runs reach from the top down to the rows.
+            out = self._gap(start[0], -math.inf, source_y)
             # The gap before the target is the one that starts at the column before it.
-            back = self._gap(target.x - COLUMN_GAP)
-            track = self._track()
+            back = self._gap(target.x - COLUMN_GAP, -math.inf, target_y)
+            track = self._track(min(out, back), max(out, back))
             return [
                 start,
                 (out, start[1]),
@@ -368,7 +406,7 @@ class Router:
             ]
         # The same column, or one to the left: out to the right, and in from the right as well.
         right = max(source.x + source.width, target.x + target.width)
-        out = self._gap(right)
+        out = self._gap(right, low, high)
         return [start, (out, start[1]), (out, target_y), (target.x + target.width, target_y)]
 
 
@@ -429,8 +467,8 @@ def render(schema: dict[str, Any], *, enum_rows: int | None = ENUM_ROWS, enums: 
     router = Router(cards)
     edges = _edges(schema, cards, router)
     # The tracks above the cards and the lanes right of the last column are part of the picture.
-    top = MARGIN + LANE * router.tracks
-    right = max((lanes * LANE for lanes in router.gaps.values()), default=0) + STUB
+    top = MARGIN + LANE * len(router.tracks)
+    right = max((len(lanes) * LANE for lanes in router.gaps.values()), default=0) + STUB
     width = max((card.x + card.width for card in cards.values()), default=0) + MARGIN + right
     height = max((card.y + card.height for card in cards.values()), default=0) + MARGIN + top
     parts = [
