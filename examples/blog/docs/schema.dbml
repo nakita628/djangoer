@@ -60,6 +60,14 @@ Table blog_comment {
   }
 }
 
+Table auth_user {
+  id integer [pk, increment]
+
+  Note: '''Not in these docs: a model of the auth app, shown as far as it is referred to.'''
+}
+
+Ref blog_author_user_id_fk: blog_author.user_id - auth_user.id [delete: cascade]
+
 Ref blog_post_author_id_fk: blog_post.author_id > blog_author.id [delete: cascade]
 
 Table blog_post_tags {

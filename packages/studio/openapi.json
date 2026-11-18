@@ -1253,6 +1253,26 @@
         ],
         "title": "AnalyzeBody"
       },
+      "Check": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "expression": {
+            "type": "string",
+            "title": "Expression"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "expression"
+        ],
+        "title": "Check",
+        "description": "A `CheckConstraint`: what every row must satisfy, as SQL."
+      },
       "ClientAnalysis": {
         "properties": {
           "calls": {
@@ -2898,7 +2918,8 @@
               "id",
               "unique",
               "normal",
-              "fulltext"
+              "fulltext",
+              "exclusion"
             ],
             "title": "Type"
           },
@@ -2981,6 +3002,35 @@
             "type": "array",
             "title": "Parameters"
           },
+          "descending": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Descending"
+          },
+          "deferrable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deferrable"
+          },
+          "nullsDistinct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nullsdistinct"
+          },
           "attribute": {
             "type": "string",
             "title": "Attribute"
@@ -2999,6 +3049,9 @@
           "method",
           "include",
           "parameters",
+          "descending",
+          "deferrable",
+          "nullsDistinct",
           "attribute"
         ],
         "title": "Index"
@@ -3165,6 +3218,13 @@
             "type": "array",
             "title": "Genericforeignkeys"
           },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/Check"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
           "managed": {
             "type": "boolean",
             "title": "Managed"
@@ -3203,6 +3263,7 @@
           "primaryKey",
           "indexes",
           "genericForeignKeys",
+          "checks",
           "managed",
           "attributes",
           "location",

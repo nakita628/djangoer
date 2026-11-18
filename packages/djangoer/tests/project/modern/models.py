@@ -50,3 +50,21 @@ if django.VERSION >= (5, 2):
 
         class Meta:
             app_label = "modern"
+
+
+if django.VERSION >= (5, 0):
+
+    class Category(models.Model):
+        project = models.CharField(max_length=50)
+        parent = models.ForeignKey("self", null=True, on_delete=models.CASCADE)
+        slug = models.SlugField()
+
+        class Meta:
+            app_label = "modern"
+            constraints = [
+                models.UniqueConstraint(
+                    fields=["project", "parent", "slug"],
+                    name="category_slug_unique",
+                    nulls_distinct=False,
+                ),
+            ]

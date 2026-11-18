@@ -52,7 +52,7 @@ export function fieldRowHeight(field: DiagramField) {
 // The order a node lists its block attributes in: the key, then what is unique, then the plain
 // indexes. The schema hands them over grouped by kind and keeps no trace of the order they were
 // written in, and the group it happens to list first puts `@@index` above `@@unique`.
-const CONSTRAINT_ORDER = { id: 0, unique: 1, normal: 2, fulltext: 2 } as const
+const CONSTRAINT_ORDER = { id: 0, unique: 1, exclusion: 1, normal: 2, fulltext: 2 } as const
 
 /**
  * The block attributes a model node lists under its fields: the key, the unique constraints, then

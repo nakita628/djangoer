@@ -22,9 +22,12 @@ export type LayoutPositions = { readonly [key: string]: Position }
 
 export type DiagramTheme = 'light' | 'dark'
 
-/** A block attribute of a model: `@@id`, `@@unique`, `@@index` or `@@fulltext`. */
+/**
+ * A block attribute of a model: `@@id`, `@@unique`, `@@index` or `@@fulltext`; for Django, an
+ * `ExclusionConstraint` too.
+ */
 export type DiagramIndex = {
-  readonly type: 'id' | 'normal' | 'unique' | 'fulltext'
+  readonly type: 'id' | 'normal' | 'unique' | 'fulltext' | 'exclusion'
   readonly fields: readonly string[]
 }
 

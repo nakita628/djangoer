@@ -267,10 +267,12 @@ def _directives(model: dict[str, Any]) -> list[dict[str, Any]]:
         name, _, value = attribute.partition(" = ")
         if name != "db_table":
             out.append({"name": name, "values": [value]})
+    for check in model["checks"]:
+        out.append({"name": "check", "values": [check["name"], check["expression"]]})
     for index in model["indexes"]:
         out.append(
             {
-                "name": "unique" if index["type"] == "unique" else "index",
+                "name": {"unique": "unique", "exclusion": "exclusion"}.get(index["type"], "index"),
                 "values": [
                     *index["fields"],
                     *index["expressions"],

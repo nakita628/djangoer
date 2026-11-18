@@ -83,7 +83,7 @@ def render_docs(
     }
     for name, path in tables.items():
         part = er.neighborhood(schema, name)
-        files[path] = svg.render(part, enum_rows=enum_rows, enums=enums).encode()
+        files[path] = svg.render(part, enum_rows=enum_rows, enums=enums, center=name).encode()
     return files
 
 

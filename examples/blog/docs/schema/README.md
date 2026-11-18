@@ -58,6 +58,7 @@ Someone who writes posts.
 
 Relations:
 
+- `user_id` → `User`.`id` (auth, not in these docs), on delete cascade
 - [Post](#post).`author_id` → `id`, on delete cascade
 - [Comment](#comment).`author_id` → `id`, on delete set null
 

@@ -1,5 +1,6 @@
 ```mermaid
 erDiagram
+    auth_user |o--o| blog_author : "(id) - (user_id)"
     blog_author ||--o{ blog_post : "(id) - (author_id)"
     blog_post }o--o{ blog_tag : "(tags) - (posts)"
     blog_post ||--o{ blog_comment : "(id) - (post_id)"
@@ -39,5 +40,8 @@ erDiagram
         TextField text
         BooleanField approved
         DateTimeField created_at
+    }
+    auth_user {
+        AutoField id PK
     }
 ```

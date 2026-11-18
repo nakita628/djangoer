@@ -2,10 +2,11 @@
 indexes are declared, not created, so PostgreSQL's kinds of index can be declared here on a
 SQLite test database."""
 
-from django.contrib.postgres.fields import ArrayField
+from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import ArrayField, DateTimeRangeField, RangeOperators
 from django.contrib.postgres.indexes import BrinIndex, GinIndex, HashIndex, OpClass
 from django.db import models
-from django.db.models import F
+from django.db.models import F, Q
 
 
 class Worker(models.Model):
@@ -49,5 +50,22 @@ class Document(models.Model):
                 OpClass(F("base_path"), name="text_ops"),
                 name="document_base_path",
                 include=["domain"],
+            ),
+        ]
+
+
+class Reservation(models.Model):
+    room = models.IntegerField()
+    during = DateTimeRangeField()
+    cancelled = models.BooleanField(default=False)
+
+    class Meta:
+        app_label = "legacy"
+        managed = False
+        constraints = [
+            ExclusionConstraint(
+                name="exclude_overlapping",
+                expressions=[("during", RangeOperators.OVERLAPS), ("room", RangeOperators.EQUAL)],
+                condition=Q(cancelled=False),
             ),
         ]
