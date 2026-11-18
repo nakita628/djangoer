@@ -3,19 +3,24 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack
 from typing import Any
 
 from django.db import DatabaseError, connections
 
+from .assumed import assumed as server_assumed
+from .assumed import offline, without_server
 from .er import (
     MERMAID_LIMIT,
     column_name,
     columns,
+    digits,
     external,
+    generated,
     is_key,
+    loose,
     mermaid,
+    referring_fields,
     relation_columns,
 )
 from .schema import Names
@@ -46,8 +51,9 @@ def create_sql(schema: dict[str, Any], known: Names, alias: str) -> str:
 
     Some of what Django writes depends on the server's version (a `UniqueConstraint` with
     `nulls_distinct` asks whether it is PostgreSQL 15), which takes a connection. When the
-    database cannot be reached, the model is written again for a version assumed
-    (`ASSUMED`), and the SQL says so in its first line.
+    database cannot be reached, the model is written again for a server assumed
+    (`assumed.ASSUMED`), and the SQL says so in its first line. On MySQL even a column's type
+    needs the server, which is assumed before anything is written.
 
     An add-on may connect all the same: django-pgtrigger opens a transaction for each trigger
     it adds to a table. What Django writes for the model is collected by then, so it is kept,
@@ -56,7 +62,13 @@ def create_sql(schema: dict[str, Any], known: Names, alias: str) -> str:
     connection = connections[alias]
     missing: list[str] = []
     assumed: set[str] = set()
-    with connection.schema_editor(collect_sql=True, atomic=False) as editor:
+    with ExitStack() as stack:
+        # MySQL's column types need the server: assumed at once when it cannot be asked.
+        version = stack.enter_context(offline(connection))
+        if version is not None:
+            assumed.add(version)
+        editor = stack.enter_context(connection.schema_editor(collect_sql=True, atomic=False))
+        without_server(editor)
         _merge_client_side(editor)
         for model in schema["models"]:
             cls = known.get(model["name"])
@@ -68,18 +80,19 @@ def create_sql(schema: dict[str, Any], known: Names, alias: str) -> str:
                 continue
             except DatabaseError as error:
                 failure = error
-            with _assumed_version(connection) as version:
-                if version is not None:
-                    # What the failed try collected is the start of the same statements.
-                    del editor.collected_sql[mark[0] :]
-                    del editor.deferred_sql[mark[1] :]
-                    try:
-                        editor.create_model(cls)
-                        assumed.add(version)
-                        continue
-                    except DatabaseError as error:
-                        assumed.add(version)
-                        failure = error
+            version = stack.enter_context(server_assumed(connection)) if not assumed else None
+            if version is not None:
+                without_server(editor)
+                # Kept for the models after it: one try to connect is enough to know.
+                assumed.add(version)
+                # What the failed try collected is the start of the same statements.
+                del editor.collected_sql[mark[0] :]
+                del editor.deferred_sql[mark[1] :]
+                try:
+                    editor.create_model(cls)
+                    continue
+                except DatabaseError as error:
+                    failure = error
             reason = str(failure).strip().splitlines()[0] if str(failure).strip() else ""
             missing.append(f"-- {model['name']}: {reason}")
         deferred = [str(statement) for statement in editor.deferred_sql]
@@ -112,33 +125,6 @@ def _merge_client_side(editor: Any) -> None:
     editor.execute = collect
 
 
-# The version a backend asks its server for, the value to assume when it cannot be asked, and
-# how the docs name it: the newest PostgreSQL the supported Djangos know.
-ASSUMED = {"postgresql": ("pg_version", 170000, "PostgreSQL 17")}
-
-
-@contextmanager
-def _assumed_version(connection: Any) -> Iterator[str | None]:
-    """The connection told a version (`ASSUMED`) for as long as the block runs, and the name of
-    it; None for a backend with none to assume, or a version known already. Afterwards the
-    version and what the backend's features worked out from it are forgotten, so a connection
-    that can reach its server later (Studio's) asks it."""
-    entry = ASSUMED.get(connection.vendor)
-    if entry is None or entry[0] in vars(connection):
-        yield None
-        return
-    attribute, value, name = entry
-    features = vars(connection.features)
-    known = set(features)
-    vars(connection)[attribute] = value
-    try:
-        yield name
-    finally:
-        vars(connection).pop(attribute, None)
-        for key in set(features) - known:
-            features.pop(key, None)
-
-
 def _cell(text: str | None) -> str:
     """Text as a table cell: no line breaks, no pipe that would end the cell."""
     return (text or "").replace("|", "\\|").replace("\n", " ")
@@ -148,11 +134,16 @@ def _code(text: str | None) -> str:
     return f"`{_cell(text)}`" if text else ""
 
 
-def _keys(model: dict[str, Any], field: dict[str, Any]) -> str:
+def _keys(model: dict[str, Any], field: dict[str, Any], unconstrained: set[str]) -> str:
+    """The Key cell. A column that refers to another model with no constraint in the database
+    (`db_constraint=False`, the columns of a ForeignObject) says so: the database does not
+    check it. `unconstrained` holds the columns no relation the database checks reads."""
     marks = []
     if is_key(model, field):
         marks.append("PK")
-    if field["isForeignKey"]:
+    if field["name"] in unconstrained:
+        marks.append("FK (no constraint)")
+    elif field["isForeignKey"]:
         marks.append("FK")
     if field["isUnique"]:
         marks.append("unique")
@@ -210,7 +201,7 @@ def _relations(model: dict[str, Any], schema: dict[str, Any], links: dict[str, s
         """What follows a model outside the docs: its app, and that it is not here."""
         return "" if name in links else f" ({tables[name]['app']}, not in these docs)"
 
-    lines = _generic_lines(model)
+    lines = _generic_lines(model) + _through_lines(model, link)
     for relation in schema["relations"]:
         parent, child = relation["from"], relation["to"]
         if model["name"] not in (parent["model"], child["model"]):
@@ -238,6 +229,10 @@ def _relations(model: dict[str, Any], schema: dict[str, Any], links: dict[str, s
             continue
         action = _action(relation["onDelete"])
         deletes = f", on delete {action}" if action else ""
+        if relation.get("parentLink"):
+            deletes = f", parent link{deletes}"
+        if loose(relation):
+            deletes += ", no database constraint"
         referred, referring = relation_columns(tables, relation)
         if len(referring) > 1:
             # A ForeignObject to a composite key: the columns it reads, and theirs.
@@ -261,6 +256,22 @@ def _relations(model: dict[str, Any], schema: dict[str, Any], links: dict[str, s
             lines.append(
                 f"- {link(child['model'])}.`{child['field']}` → `{parent['field']}`{deletes}"
             )
+    return lines
+
+
+def _through_lines(model: dict[str, Any], link) -> list[str]:
+    """The many-to-many of a model that go through a model of the project's (`through=`), on
+    each side: the diagrams draw the through model's two foreign keys, and the docs name the
+    field the code reaches the other side by."""
+    lines = []
+    for field in model["fields"]:
+        relation = field["relation"]
+        if field["kind"] != "object" or relation is None or not relation.get("through"):
+            continue
+        lines.append(
+            f"- `{field['name']}` — many to many with {link(field['type'])}, "
+            f"through {link(relation['through'])}"
+        )
     return lines
 
 
@@ -305,11 +316,65 @@ def _index(index: dict[str, Any]) -> str:
     return f"- {method}{kind}{name} on {on}{using}{including}{parameters}{where}{after}"
 
 
+def _native(field: dict[str, Any]) -> str:
+    """The Type cell: the column's type in the database, and its collation when it has one."""
+    collation = f" collation {_code(field['collation'])}" if field.get("collation") else ""
+    return _code(field["nativeType"]) + collation
+
+
+def _unconstrained(model: dict[str, Any], schema: dict[str, Any]) -> set[str]:
+    """The columns of a model that refer to another with no foreign key in the database, and
+    are not the column of a foreign key it has besides (a ForeignObject reads those too)."""
+    tables = {entry["name"]: entry for entry in schema["models"]}
+    mine = [
+        relation
+        for relation in schema["relations"]
+        if relation["origin"] == "inferred" and relation["to"]["model"] == model["name"]
+    ]
+    checked = {name for r in mine if not loose(r) for name in referring_fields(tables, r)}
+    return {name for r in mine if loose(r) for name in referring_fields(tables, r)} - checked
+
+
+def _inheritance(model: dict[str, Any], schema: dict[str, Any], links: dict[str, str]) -> list[str]:
+    """What a model shares with others: the parent whose rows its rows are (multi-table), the
+    models whose rows are its own, its proxy models, the abstract models its columns are from."""
+
+    def link(name: str) -> str:
+        return f"[{name}](#{links[name]})" if name in links else f"`{name}`"
+
+    lines = []
+    for relation in schema["relations"]:
+        if not relation.get("parentLink"):
+            continue
+        if relation["to"]["model"] == model["name"]:
+            lines.append(
+                f"Inherits from {link(relation['from']['model'])} (multi-table): its rows are "
+                f"joined on `{relation['to']['field']}`."
+            )
+    children = [
+        link(relation["to"]["model"])
+        for relation in schema["relations"]
+        if relation.get("parentLink") and relation["from"]["model"] == model["name"]
+    ]
+    if children:
+        lines.append(f"Subclasses (multi-table): {', '.join(children)}.")
+    if model.get("proxies"):
+        proxies = ", ".join(f"`{proxy['name']}`" for proxy in model["proxies"])
+        lines.append(f"Proxy models, on this table: {proxies}.")
+    for base in model.get("abstractBases") or []:
+        fields = ", ".join(f"`{name}`" for name in base["fields"])
+        lines.append(f"Columns from `{base['name']}` (abstract): {fields}.")
+    # One paragraph each.
+    return [part for line in lines for part in (line, "")][:-1]
+
+
 def _default(field: dict[str, Any]) -> str:
     """The Default cell: what Python gives a new row, the database's own default (as the SQL
-    the column is created with), or the expression a generated column is computed from."""
+    the column is created with), or the expression a generated column is computed from, and
+    whether it is stored or computed on read."""
     if field["generated"]:
-        return f"generated: {_code(field['generated'])}"
+        kind, _colon, _expression = (generated(field) or "generated:").partition(":")
+        return f"{kind}: {_code(field['generated'])}"
     if field["dbDefault"]:
         return f"{_code(field['dbDefault'])} (database)"
     return _code(field["default"])
@@ -321,6 +386,9 @@ def _model(
     lines = [f"## {model['name']}", "", f"Table `{model['dbName']}`, app `{model['app']}`."]
     if not model["managed"]:
         lines += ["", UNMANAGED]
+    inheritance = _inheritance(model, schema, links)
+    if inheritance:
+        lines += ["", *inheritance]
     if model["documentation"]:
         lines += ["", model["documentation"]]
     if diagram is not None:
@@ -330,16 +398,17 @@ def _model(
         "| Column | Field | Type | Null | Key | Default | Description |",
         "| --- | --- | --- | --- | --- | --- | --- |",
     ]
+    unconstrained = _unconstrained(model, schema)
     for field in columns(model):
         lines.append(
             "| "
             + " | ".join(
                 [
                     _code(column_name(field)),
-                    _code(field["type"]),
-                    _code(field["nativeType"]),
+                    _code(field["type"] + (digits(field) or "")),
+                    _native(field),
                     "" if field["isRequired"] else "yes",
-                    _keys(model, field),
+                    _keys(model, field, unconstrained),
                     _default(field),
                     _cell(field["documentation"]),
                 ]
@@ -360,6 +429,14 @@ def _model(
 
 
 def _enum(enum: dict[str, Any]) -> list[str]:
+    """An enum's table; with a Group column when its choices are grouped."""
+    if any(value.get("group") for value in enum["values"]):
+        lines = [f"## {enum['name']}", "", "| Group | Name | Stored as |", "| --- | --- | --- |"]
+        lines += [
+            f"| {_cell(value.get('group'))} | `{value['name']}` | {_code(value['dbName'])} |"
+            for value in enum["values"]
+        ]
+        return lines
     lines = [f"## {enum['name']}", "", "| Name | Stored as |", "| --- | --- |"]
     lines += [f"| `{value['name']}` | {_code(value['dbName'])} |" for value in enum["values"]]
     return lines

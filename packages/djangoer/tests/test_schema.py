@@ -38,6 +38,7 @@ def test_a_foreign_key_is_a_column_and_a_relation(api):
         "toFields": ["id"],
         "onDelete": "PROTECT",
         "onUpdate": None,
+        "through": None,
     }
     reverse = field(api, "Customer", "orders")
     assert reverse["kind"] == "object"
@@ -52,8 +53,8 @@ def test_choices_become_an_enum(api):
     _status, snapshot = api("GET", "/api/schema")
     enum = next(e for e in snapshot["schema"]["enums"] if e["name"] == "ProductKind")
     assert enum["values"] == [
-        {"name": "BOOK", "dbName": "book"},
-        {"name": "TOOL", "dbName": "tool"},
+        {"name": "BOOK", "dbName": "book", "group": None},
+        {"name": "TOOL", "dbName": "tool", "group": None},
     ]
 
 
@@ -78,6 +79,7 @@ def test_relations_for_the_diagram(api):
     assert fk["to"] == {"model": "Order", "field": "customer_id", "cardinality": "zero-many"}
     m2m = relations["Order.products<->Product.orders"]
     assert m2m["origin"] == "implicit-many-to-many"
+    assert (fk["constrained"], fk["parentLink"]) == (True, False)
 
 
 def test_docs_describe_every_model(api):

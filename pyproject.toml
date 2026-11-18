@@ -30,6 +30,8 @@ dev = [
   "pyright>=1.1.400",
   "jedi>=0.19",
   "psycopg[binary]>=3.2",
+  # MySQL's backend loads with PyMySQL in place of mysqlclient, which needs a C library.
+  "pymysql>=1.1",
 ]
 
 [tool.pytest.ini_options]

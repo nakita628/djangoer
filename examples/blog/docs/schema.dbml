@@ -28,7 +28,7 @@ Table blog_post {
   body text [not null]
   status PostStatus [default: 'draft', not null]
   views "integer unsigned" [default: 0, not null]
-  rating decimal
+  rating decimal [note: 'declared max_digits=3, decimal_places=1, which the database does not enforce']
   metadata text [not null, note: 'default in Python: dict()']
   published_at datetime
   created_at datetime [not null, note: 'default in Python: now()']

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from html import escape
 from typing import Any
 
-from .er import column_name, columns, external, is_key
+from .er import column_name, columns, external, is_key, loose
 
 # The narrowest a card is; it widens to its longest line, up to the widest.
 NODE_WIDTH = 340
@@ -121,7 +121,15 @@ def _needed(card: Card) -> float:
 def _enum_rows(values: list[dict[str, Any]], limit: int | None) -> list[tuple[str, str, str]]:
     """The rows of an enum's card: every value, or as many as `limit` with the last one saying
     how many more there are. None is no limit."""
-    rows = [(value["name"], value["dbName"] or "", "") for value in values]
+    # The group of grouped choices beside the stored value: `vinyl · Audio`.
+    rows = [
+        (
+            value["name"],
+            " · ".join(part for part in (value["dbName"] or "", value.get("group") or "") if part),
+            "",
+        )
+        for value in values
+    ]
     if limit is None or len(rows) <= limit:
         return rows
     shown = rows[: max(limit - 1, 0)]
@@ -436,19 +444,54 @@ class Lanes:
         return len(self.taken)
 
 
+# How far a line running between the cards of a column keeps from them.
+CLEARANCE = 6
+# What a line pays to run outside the cards (over them, or under the tallest column) rather
+# than through a gap between them, in pixels of extra travel: the picture grows for it.
+OUTSIDE = 2400
+
+
+# How many slots of an opening a line tries before it gives up on it.
+SEARCH = 400
+
+
+def _outward(middle: int, first: int, last: int):
+    """The slots from `first` to `last`, the nearest `middle` first, at most `SEARCH` of them."""
+    yield middle
+    for step in range(1, SEARCH):
+        below, above = middle + step, middle - step
+        if below > last and above < first:
+            return
+        if below <= last:
+            yield below
+        if above >= first:
+            yield above
+
+
 class Router:
     """Lines between cards, in right angles, none through a card and none on another.
 
     A line to the next column bends once, in the gap between the two. A line to a card further
-    away would cross the columns in between, so it rises to a track above every card, runs
-    there, and comes down in the gap before its target. The vertical runs of a gap and the
-    tracks are lanes (`Lanes`): a line takes the first one where it meets no other.
+    away crosses the columns in between: it runs across them through a gap the cards leave at
+    some height in every one of them (between two cards, or below the shorter columns), the
+    one nearest its two rows, and only when there is none it rises to a track above every
+    card. The vertical runs of a gap, the runs across and the tracks are lanes (`Lanes`): a
+    line takes the first one where it meets no other.
     """
 
     def __init__(self, cards: dict[str, Card]):
         self.gaps: dict[float, Lanes] = {}
         self.tracks = Lanes()
+        # The runs across the columns, by their height (a multiple of a lane), each a list of
+        # the spans it covers.
+        self.across: dict[int, list[tuple[float, float]]] = {}
         self.top = min((card.y for card in cards.values()), default=MARGIN)
+        self.bottom = max((card.y + card.height for card in cards.values()), default=MARGIN)
+        # The lowest a line runs: under the cards, a run across makes the picture taller.
+        self.lowest = self.bottom
+        self.columns: dict[int, list[tuple[float, float]]] = {}
+        for card in cards.values():
+            self.columns.setdefault(card.column, []).append((card.y, card.y + card.height))
 
     def _gap(self, x: float, low: float, high: float) -> float:
         """A lane in the gap that starts at `x`, clear from `low` to `high`."""
@@ -459,7 +502,59 @@ class Router:
         """A track above the cards, clear from `low` to `high`."""
         return self.top - LANE * (self.tracks.take(low, high) + 1) - 4
 
-    def between(self, source: Card, source_y: float, target: Card, target_y: float):
+    def _openings(self, first: int, last: int) -> list[tuple[float, float]]:
+        """The heights at which a line crosses the columns from `first` to `last` touching no
+        card: the gaps every one of them leaves, the last one open below."""
+        blocked = sorted(
+            (y0 - CLEARANCE, y1 + CLEARANCE)
+            for column in range(first, last + 1)
+            for y0, y1 in self.columns.get(column, ())
+        )
+        openings: list[tuple[float, float]] = []
+        reach = -math.inf
+        for low, high in blocked:
+            if low > reach and reach > -math.inf:
+                openings.append((reach, low))
+            reach = max(reach, high)
+        openings.append((reach if reach > -math.inf else self.top, math.inf))
+        return openings
+
+    def _free(self, slot: int, low: float, high: float) -> bool:
+        return all(
+            high + LANE <= start or low - LANE >= end for start, end in self.across.get(slot, ())
+        )
+
+    def _across(self, source: Card, source_y: float, target: Card, target_y: float):
+        """The run across the columns between two cards: (what it costs, its slot), the slot a
+        height in lanes. The cost is how far it runs beyond the two rows, and `OUTSIDE` more
+        under every card. None when the columns leave no gap at all."""
+        left, right = source.x + source.width, target.x
+        wanted_low, wanted_high = min(source_y, target_y), max(source_y, target_y)
+        best: tuple[float, int] | None = None
+        for low, high in self._openings(source.column + 1, target.column - 1):
+            first = math.ceil((low + LANE / 2) / LANE)
+            last = math.floor((high - LANE / 2) / LANE) if high < math.inf else first + SEARCH
+            if first > last:
+                continue
+            middle = min(max(round((wanted_low + wanted_high) / 2 / LANE), first), last)
+            slot = next(
+                (slot for slot in _outward(middle, first, last) if self._free(slot, left, right)),
+                None,
+            )
+            if slot is None:
+                continue
+            y = slot * LANE
+            cost = max(wanted_low - y, 0) + max(y - wanted_high, 0)
+            if y > self.bottom:
+                cost += OUTSIDE
+            if best is None or cost < best[0]:
+                best = (cost, slot)
+        return best
+
+    def between(self, source: Card, source_y: float, target: Card, target_y: float, *, local=False):
+        """The points of a line from a row of one card to a row of another. With `local`, a
+        line that would have to leave the cards (over them, or under them all) is not drawn:
+        None."""
         start = (source.x + source.width, source_y)
         distance = target.column - source.column
         low, high = min(source_y, target_y), max(source_y, target_y)
@@ -467,6 +562,26 @@ class Router:
             middle = self._gap(start[0], low, high)
             return [start, (middle, start[1]), (middle, target_y), (target.x, target_y)]
         if distance > 1:
+            found = self._across(source, source_y, target, target_y)
+            if found is not None and (found[0] < OUTSIDE or not local):
+                cost, slot = found
+                # Under the cards or over them, whichever is the shorter way round.
+                if cost < OUTSIDE or self._track_cost(source_y, target_y) >= cost:
+                    y = slot * LANE
+                    self.across.setdefault(slot, []).append((source.x + source.width, target.x))
+                    self.lowest = max(self.lowest, y)
+                    out = self._gap(start[0], min(source_y, y), max(source_y, y))
+                    back = self._gap(target.x - COLUMN_GAP, min(target_y, y), max(target_y, y))
+                    return [
+                        start,
+                        (out, start[1]),
+                        (out, y),
+                        (back, y),
+                        (back, target_y),
+                        (target.x, target_y),
+                    ]
+            if local:
+                return None
             # Up to a track above every card: the runs reach from the top down to the rows.
             out = self._gap(start[0], -math.inf, source_y)
             # The gap before the target is the one that starts at the column before it.
@@ -484,6 +599,11 @@ class Router:
         right = max(source.x + source.width, target.x + target.width)
         out = self._gap(right, low, high)
         return [start, (out, start[1]), (out, target_y), (target.x + target.width, target_y)]
+
+    def _track_cost(self, source_y: float, target_y: float) -> float:
+        """What a line over the cards travels beyond its two rows, and what it costs to leave
+        them."""
+        return 2 * (min(source_y, target_y) - self.top) + OUTSIDE
 
 
 def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> list[str]:
@@ -506,13 +626,25 @@ def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> li
         child_y = child.row_y(column(child.name, relation["to"]["field"]))
         points = router.between(parent, parent_y, child, child_y)
         # Dashed: no foreign key backs it. A generic relation in shorter dashes than a
-        # many-to-many, which a table of its own does back.
+        # many-to-many, which a table of its own does back; a foreign key the database does not
+        # check (`db_constraint=False`, a ForeignObject) in longer ones.
         dashes = {"implicit-many-to-many": "5 4", "generic": "2 3"}.get(relation["origin"])
+        if loose(relation):
+            dashes = "8 4"
         dash = f' stroke-dasharray="{dashes}"' if dashes else ""
         parts.append(
             f'<path class="relation-edge" d="{_line(points)}" fill="none" '
             f'stroke="{COLORS["edge"]}" stroke-width="1.4"{dash}/>'
         )
+        if relation.get("parentLink"):
+            # Multi-table inheritance, as UML draws it: a hollow triangle at the parent.
+            px, py = points[0]
+            away = 1 if points[1][0] > px else -1
+            parts.append(
+                f'<path class="inheritance" d="M{px:g} {py:g} L{px + 13 * away:g} {py - 7:g} '
+                f'L{px + 13 * away:g} {py + 7:g} Z" fill="{COLORS["card"]}" '
+                f'stroke="{COLORS["edge"]}" stroke-width="1.4"/>'
+            )
         # The "many" end, at the column that refers: a crow's foot opening onto the card.
         x, y = points[-1]
         toward = 1 if points[-2][0] > x else -1
@@ -530,9 +662,13 @@ def _edges(schema: dict[str, Any], cards: dict[str, Card], router: Router) -> li
             enum = cards.get(f"enum:{field['type']}") if field["kind"] == "enum" else None
             if enum is None:
                 continue
+            # Drawn where it can be among the cards, else not: the field's type names the enum,
+            # and a line over every card to the enums' columns is most of a large picture.
             points = router.between(
-                card, card.row_y(column_name(field)), enum, enum.y + HEADER_HEIGHT / 2
+                card, card.row_y(column_name(field)), enum, enum.y + HEADER_HEIGHT / 2, local=True
             )
+            if points is None:
+                continue
             parts.append(
                 f'<path class="enum-edge" d="{_line(points)}" fill="none" '
                 f'stroke="{COLORS["enum"]}" stroke-width="1.2" stroke-dasharray="3 4"/>'
@@ -559,7 +695,9 @@ def render(
     top = MARGIN + LANE * len(router.tracks)
     right = max((len(lanes) * LANE for lanes in router.gaps.values()), default=0) + STUB
     width = max((card.x + card.width for card in cards.values()), default=0) + MARGIN + right
-    height = max((card.y + card.height for card in cards.values()), default=0) + MARGIN + top
+    # The runs across under the shorter columns may be under every card too.
+    bottom = max(router.bottom, router.lowest + LANE)
+    height = bottom + MARGIN + top
     parts = [
         (
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:g}" height="{height:g}" '

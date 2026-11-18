@@ -57,6 +57,8 @@ class FieldRelation(Contract):
     to_fields: list[str]
     on_delete: str | None
     on_update: str | None
+    # The model a many-to-many goes through when it is one of the project's (`through=`).
+    through: str | None
 
 
 class Field(Contract):
@@ -76,6 +78,13 @@ class Field(Contract):
     # The expression of a generated column, as SQL: `"price" + "tax"`.
     generated: str | None
     native_type: str | None
+    # A generated column: stored on disk (True) or computed on read (False).
+    stored: bool | None
+    # `db_collation`: how the column compares and sorts (`NOCASE`, `und-x-icu`).
+    collation: str | None
+    # What a DecimalField declares, which a type with no precision (SQLite's `decimal`) loses.
+    max_digits: int | None
+    decimal_places: int | None
     documentation: str | None
     annotations: list[str]
     relation: FieldRelation | None
@@ -123,6 +132,21 @@ class GenericForeignKey(Contract):
     object_id_field: str
 
 
+class ProxyModel(Contract):
+    """A proxy of a model (`Meta.proxy = True`): its rows under another name, no table."""
+
+    name: str
+    app: str
+    documentation: str | None
+
+
+class AbstractBase(Contract):
+    """An abstract model a model takes columns from (`Timestamped`), and which columns."""
+
+    name: str
+    fields: list[str]
+
+
 class Model(Contract):
     name: str
     app: str
@@ -134,6 +158,8 @@ class Model(Contract):
     indexes: list[Index]
     generic_foreign_keys: list[GenericForeignKey]
     checks: list[Check]
+    proxies: list[ProxyModel]
+    abstract_bases: list[AbstractBase]
     # False for `managed = False`: Django neither creates nor changes the table.
     managed: bool
     attributes: list[str]
@@ -145,6 +171,8 @@ class Model(Contract):
 class EnumValue(Contract):
     name: str
     db_name: str | None
+    # The group of grouped choices it is in (`"Audio"`), None when they are not grouped.
+    group: str | None
 
 
 class Enum(Contract):
@@ -183,6 +211,11 @@ class Relation(Contract):
     on_update: str | None
     # The table that joins the two, for a many-to-many with no through model of its own.
     through: Through | None
+    # Whether the database has a foreign key for it: not for `db_constraint=False`, a
+    # ForeignObject or a generic relation.
+    constrained: bool
+    # Multi-table inheritance: the child (`to`) is the parent (`from`), its rows joined on it.
+    parent_link: bool
 
 
 class Schema(Contract):

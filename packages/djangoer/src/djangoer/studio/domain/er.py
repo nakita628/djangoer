@@ -81,6 +81,8 @@ def _stub(model: dict[str, Any], fields: set[str]) -> dict[str, Any]:
         ],
         "indexes": [],
         "genericForeignKeys": [],
+        "proxies": [],
+        "abstractBases": [],
         "documentation": None,
         "external": True,
     }
@@ -104,7 +106,9 @@ def related(schema: dict[str, Any]) -> list[str]:
 
 def neighborhood(schema: dict[str, Any], name: str) -> dict[str, Any]:
     """The schema of one model's diagram: the model, the models it joins, the relations between
-    it and them, and the enums their fields use."""
+    it and them, and the enums of the model's own fields. A neighbour's enums are its own
+    diagram's: its card names the enum as the field's type, and a model with many neighbours
+    (a generic relation's target) would otherwise be a picture of their enums."""
     relations = [
         relation
         for relation in schema["relations"]
@@ -113,7 +117,11 @@ def neighborhood(schema: dict[str, Any], name: str) -> dict[str, Any]:
     names = {name, *(end for r in relations for end in (r["from"]["model"], r["to"]["model"]))}
     models = [model for model in schema["models"] if model["name"] in names]
     used = {
-        field["type"] for model in models for field in model["fields"] if field["kind"] == "enum"
+        field["type"]
+        for model in models
+        if model["name"] == name
+        for field in model["fields"]
+        if field["kind"] == "enum"
     }
     return {
         **schema,
@@ -158,6 +166,24 @@ def relation_columns(
     )
 
 
+def loose(relation: dict[str, Any]) -> bool:
+    """Whether a relation Django follows has no foreign key in the database behind it: a
+    ForeignKey with `db_constraint=False`, a ForeignObject. A generic relation is a kind of its
+    own, and a many-to-many is its table's."""
+    return relation["origin"] == "inferred" and not relation.get("constrained", True)
+
+
+def referring_fields(tables: dict[str, dict[str, Any]], relation: dict[str, Any]) -> list[str]:
+    """The fields of the referring model a relation reads: its foreign key's column, or the
+    columns a ForeignObject names."""
+    child = tables[relation["to"]["model"]]
+    for field in child["fields"]:
+        found = field["relation"]
+        if field["name"] == relation["to"]["field"] and found and len(found["fromFields"]) > 1:
+            return list(found["fromFields"])
+    return [relation["to"]["field"]]
+
+
 def _tables(schema: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {model["name"]: model for model in schema["models"]}
 
@@ -191,8 +217,12 @@ def mermaid(schema: dict[str, Any]) -> str:
         right = "o{" if many_to_many else CHILD_END[relation["to"]["cardinality"]]
         referred, referring = relation_columns(tables, relation)
         label = f"({', '.join(referred)}) - ({', '.join(referring)})"
-        # Dotted: nothing in the database backs a generic relation.
-        line = ".." if relation["origin"] == "generic" else "--"
+        if relation.get("parentLink"):
+            label = f"is a, by {', '.join(referring)}"
+        elif loose(relation):
+            label += ", no constraint"
+        # Dotted: nothing in the database backs a generic relation, nor a loose one.
+        line = ".." if relation["origin"] == "generic" or loose(relation) else "--"
         lines.append(
             f"    {_identifier(parent['dbName'])} {left}{line}{right} "
             f'{_identifier(child["dbName"])} : "{label}"'
@@ -225,6 +255,10 @@ def _dbml_native(text: str) -> str:
 
 
 def _dbml_string(text: str) -> str:
+    """A string of one line between quotes; one of several lines (a `help_text` with a line
+    break) between three, as DBML takes no line break in the other."""
+    if "\n" in text or "\r" in text:
+        return _dbml_note(text)
     return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
@@ -248,15 +282,22 @@ def _dbml_enum_values(values: list[dict[str, Any]]) -> list[str]:
     no error to the parser.
     """
     labels: dict[str, list[str]] = {}
+    groups: dict[str, str] = {}
     for value in values:
         stored = value["name"] if value["dbName"] is None else value["dbName"]
         labels.setdefault(stored, []).append(value["name"])
+        if value.get("group"):
+            groups.setdefault(stored, value["group"])
     lines = []
     for stored, names in labels.items():
+        notes = [" / ".join(names)] if len(names) > 1 else []
+        # Grouped choices: the group a value is listed under.
+        if stored in groups:
+            notes.append(f"group: {groups[stored]}")
         if stored == "":
             lines.append(f'  // "" ({" / ".join(names)}): the empty string, which DBML cannot name')
-        elif len(names) > 1:
-            lines.append(f"  {_dbml_quoted(stored)} [note: {_dbml_string(' / '.join(names))}]")
+        elif notes:
+            lines.append(f"  {_dbml_quoted(stored)} [note: {_dbml_string('; '.join(notes))}]")
         else:
             lines.append(f"  {_dbml_quoted(stored)}")
     return lines
@@ -374,13 +415,79 @@ def _dbml_settings(field: dict[str, Any], note: str | None = None) -> str:
         settings.append(f"default: {default}")
     if field["isRequired"] and not field["isId"]:
         settings.append("not null")
-    generated = f"generated: {field['generated']}" if field["generated"] else None
     notes = [
-        text for text in (field["documentation"], generated, _python_default(field), note) if text
+        text
+        for text in (
+            field["documentation"],
+            generated(field),
+            _python_default(field),
+            _declared(field),
+            note,
+        )
+        if text
     ]
     if notes:
         settings.append(f"note: {_dbml_string('. '.join(notes))}")
     return f" [{', '.join(settings)}]" if settings else ""
+
+
+def generated(field: dict[str, Any]) -> str | None:
+    """What a generated column is computed from, and whether it is stored or computed on read:
+    `generated (stored): "price" + "tax"`."""
+    if not field["generated"]:
+        return None
+    kind = {True: " (stored)", False: " (virtual)"}.get(field.get("stored"), "")
+    return f"generated{kind}: {field['generated']}"
+
+
+def digits(field: dict[str, Any]) -> str | None:
+    """The precision a DecimalField declares, `(10, 2)`, None for any other field."""
+    if field.get("maxDigits") is None and field.get("decimalPlaces") is None:
+        return None
+    return f"({field.get('maxDigits')}, {field.get('decimalPlaces')})"
+
+
+def _declared(field: dict[str, Any]) -> str | None:
+    """What the column's type in DBML does not say of it: its collation, and the precision of a
+    decimal whose type has none (SQLite's `decimal`)."""
+    parts = []
+    if field.get("collation"):
+        parts.append(f"collation {field['collation']}")
+    native = field["nativeType"] or ""
+    if digits(field) and "(" not in native:
+        parts.append(
+            f"declared max_digits={field['maxDigits']}, decimal_places={field['decimalPlaces']}, "
+            "which the database does not enforce"
+        )
+    return ", ".join(parts) or None
+
+
+def _relation_notes(schema: dict[str, Any]) -> dict[tuple[str, str], str]:
+    """What DBML says of a column whose relation no `Ref` says: one with no foreign key in the
+    database (`db_constraint=False`, a ForeignObject), whose `Ref` would read as one; and the
+    link of a child to its parent in multi-table inheritance."""
+    tables = _tables(schema)
+    notes: dict[tuple[str, str], str] = {}
+    for relation in schema["relations"]:
+        if relation.get("parentLink"):
+            child, parent = relation["to"]["model"], relation["from"]["model"]
+            notes[(child, relation["to"]["field"])] = (
+                f"parent link: a {child} is a {parent} (multi-table inheritance)"
+            )
+            continue
+        if not loose(relation):
+            continue
+        parent = tables[relation["from"]["model"]]
+        referred, _referring = relation_columns(tables, relation)
+        target = f"{parent['dbName']}.{_dbml_columns(referred)}"
+        fields = referring_fields(tables, relation)
+        # A ForeignObject reads columns that may be keys of their own: it is named.
+        what = f"{relation['to']['field']}: " if len(fields) > 1 else ""
+        for name in fields:
+            key = (relation["to"]["model"], name)
+            text = f"{what}refers to {target}, with no foreign key in the database"
+            notes[key] = f"{notes[key]}. {text}" if key in notes else text
+    return notes
 
 
 def _generic_notes(schema: dict[str, Any]) -> dict[tuple[str, str], str]:
@@ -409,6 +516,8 @@ def dbml(schema: dict[str, Any]) -> str:
     """A DBML document: enums, tables with their indexes and notes, then the references."""
     tables = _tables(schema)
     generic = _generic_notes(schema)
+    for key, text in _relation_notes(schema).items():
+        generic[key] = f"{generic[key]}. {text}" if key in generic else text
     blocks: list[str] = []
     for enum in schema["enums"]:
         values = "\n".join(_dbml_enum_values(enum["values"]))
@@ -440,7 +549,8 @@ def dbml(schema: dict[str, Any]) -> str:
             if external(model)
             else None
         )
-        note = "\n\n".join(text for text in (outside, unmanaged, model["documentation"]) if text)
+        texts = (outside, unmanaged, model["documentation"], *inheritance(model))
+        note = "\n\n".join(text for text in texts if text)
         if note:
             lines += ["", f"  Note: {_dbml_note(note)}"]
         lines.append("}")
@@ -452,7 +562,7 @@ def dbml(schema: dict[str, Any]) -> str:
             if relation["through"] is not None:
                 blocks += _dbml_through(relation, tables)
             continue
-        if relation["origin"] == "generic":
+        if relation["origin"] == "generic" or loose(relation):
             # No foreign key backs it, and a Ref would read as one: the column's note says it.
             continue
         referred, referring = relation_columns(tables, relation)
@@ -468,6 +578,17 @@ def dbml(schema: dict[str, Any]) -> str:
             f"{arrow} {parent['dbName']}.{_dbml_columns(referred)}{settings}"
         )
     return "\n\n".join(blocks) + "\n"
+
+
+def inheritance(model: dict[str, Any]) -> list[str]:
+    """What a model's note says of the models it shares its rows or its columns with: its proxy
+    models, and the abstract models its columns come from."""
+    out = []
+    if model.get("proxies"):
+        out.append(f"Proxy models: {', '.join(p['name'] for p in model['proxies'])}.")
+    for base in model.get("abstractBases") or []:
+        out.append(f"Columns from {base['name']} (abstract): {', '.join(base['fields'])}.")
+    return out
 
 
 def _dbml_columns(names: list[str]) -> str:

@@ -87,6 +87,12 @@ def test_an_export_covers_the_projects_own_models_unless_asked_for_all():
         "Job",
         "Document",
         "Reservation",
+        # A proxy has no table: it is a note of its model's (`Shop.proxies`), not a model.
+        "Site",
+        "Shop",
+        "Team",
+        "Person",
+        "Membership",
     ]
     everything = export.schema_for("default", ROOT, everything=True)
     assert "Group" in [model["name"] for model in everything["models"]]
@@ -428,7 +434,10 @@ def test_a_child_of_multi_table_inheritance_has_its_own_columns_only():
     assert restaurant["fields"][0]["isId"] is True
     text = er.dbml(venue())
     assert table(text, "venue_restaurant").splitlines()[1:3] == [
-        "  place_ptr_id bigint [pk]",
+        (
+            "  place_ptr_id bigint [pk, note: 'parent link: a Restaurant is a Place (multi-table "
+            "inheritance)']"
+        ),
         "  serves_pizza bool [default: false, not null]",
     ]
     # The parent's many-to-many is the parent's, written once.
@@ -625,23 +634,29 @@ def test_a_composite_primary_key_and_a_foreign_object_to_it():
     assert "    (order_id, item_id) [pk]" in orderline
     # The key is the index, not `pk` on each column, which would be a key each.
     assert "  order_id integer [not null]" in orderline
+    # A ForeignObject has no foreign key in the database: no Ref, a note on its columns.
+    assert "Ref modern_shipment_line_fk" not in text
     assert (
-        "Ref modern_shipment_line_fk: modern_shipment.(order_id, item_id) > "
-        "modern_orderline.(order_id, item_id) [delete: cascade]"
-    ) in text
+        "  order_id integer [not null, note: 'line: refers to modern_orderline.(order_id, "
+        "item_id), with no foreign key in the database']"
+    ) in table(text, "modern_shipment")
     mermaid = er.mermaid(schema)
     assert "        IntegerField order_id PK\n" in mermaid
     assert "        ForeignKey item_id PK\n" in mermaid
     assert (
-        'modern_orderline ||--o{ modern_shipment : "(order_id, item_id) - (order_id, item_id)"'
+        'modern_orderline ||..o{ modern_shipment : "(order_id, item_id) - (order_id, item_id), '
+        'no constraint"'
     ) in mermaid
     docs = markdown.render(schema, sql="", diagram=None)
     assert "| `order_id` | `IntegerField` | `integer` |  | PK |  |  |" in docs
     assert "| `item_id` | `ForeignKey` | `bigint` |  | PK, FK |  |  |" in docs
     assert (
         "- `line` (`order_id`, `item_id`) → [OrderLine](#orderline).(`order_id`, `item_id`), "
-        "on delete cascade"
+        "on delete cascade, no database constraint"
     ) in docs
+    # Shipment's `order_id` is read by the ForeignObject only; `item_id` is a foreign key too.
+    assert "| `order_id` | `IntegerField` | `integer` |  | FK (no constraint) |  |  |" in docs
+    assert "| `item_id` | `ForeignKey` | `bigint` |  | FK |  |  |" in docs
     assert ("order_id", "IntegerField", "PK") in svg.layout(schema)["OrderLine"].rows
 
 
@@ -658,7 +673,7 @@ def test_generated_columns_database_defaults_and_comments():
     assert fields["name"]["documentation"] == "The name shown to customers — Shown in lists"
     assert item["documentation"] == "Things we sell"
     text = table(er.dbml(schema), "modern_item")
-    assert "  total decimal [note: 'generated: " in text
+    assert "  total decimal [note: 'generated (stored): " in text
     assert "  stock integer [default: 0, not null]" in text
     assert "  created datetime [default: `(" in text
     assert (
@@ -666,7 +681,9 @@ def test_generated_columns_database_defaults_and_comments():
     ) in text
     assert "Note: '''Things we sell'''" in text
     docs = markdown.render(schema, sql="", diagram=None)
-    assert "| `total` | `GeneratedField` | `decimal` | yes |  | generated: `" in docs
+    assert (
+        "| `total` | `GeneratedField(11, 2)` | `decimal` | yes |  | generated (stored): `" in docs
+    )
     assert "| `stock` | `IntegerField` | `integer` |  |  | `0` (database) |  |" in docs
     assert "\nThings we sell\n" in docs
 
@@ -699,8 +716,10 @@ def test_the_diagram_of_a_model_is_the_model_and_the_models_it_joins():
     assert part["enums"] == []
     order = er.neighborhood(shop(), "Order")
     assert [model["name"] for model in order["models"]] == ["Customer", "Product", "Order"]
-    # Product's enum comes with it.
-    assert [enum["name"] for enum in order["enums"]] == ["ProductKind"]
+    # Product's enum is on Product's own diagram: Order's card names it as the type only.
+    assert order["enums"] == []
+    product = er.neighborhood(shop(), "Product")
+    assert [enum["name"] for enum in product["enums"]] == ["ProductKind"]
     document = export.render_docs("default", shop())["tables/Customer.svg"].decode()
     assert document.count('class="model-node"') == 2
     assert ">Product</text>" not in document
@@ -724,7 +743,7 @@ def test_writing_the_docs_again_removes_the_diagram_of_a_model_that_is_gone(tmp_
 
 def chain(count: int, reach: int) -> dict:
     """Models in a chain, each referring to the one before it (a column each), and to the one
-    `reach` before it too: those lines cross columns, over the cards."""
+    `reach` before it too: those lines cross columns."""
     base = shop()
     key = next(f for f in base["models"][0]["fields"] if f["name"] == "id")
 
@@ -765,16 +784,17 @@ def chain(count: int, reach: int) -> dict:
     return {**base, "models": models, "enums": [], "relations": relations}
 
 
-def test_svg_lines_over_the_cards_share_a_track_when_they_do_not_overlap():
+def test_svg_lines_across_the_cards_share_a_lane_when_they_do_not_overlap():
     schema = chain(20, 3)
     cards = svg.layout(schema)
     router = svg.Router(cards)
     svg._edges(schema, cards, router)
     long_lines = len([r for r in schema["relations"] if r["to"]["field"] == "far_id"])
     assert long_lines == 17
-    # A track each for the lines that run side by side, not one for every line: a line over
+    # A lane each for the lines that run side by side, not one for every line: a line over
     # three columns meets only the two before it and the two after it.
-    assert len(router.tracks) <= 4
+    assert len(router.across) <= 4
+    assert sum(len(spans) for spans in router.across.values()) == long_lines
 
 
 def test_svg_lines_on_one_lane_do_not_meet():
@@ -786,6 +806,28 @@ def test_svg_lines_on_one_lane_do_not_meet():
         for spans in lanes.taken:
             ordered = sorted(spans)
             assert all(a[1] + svg.LANE <= b[0] for a, b in pairwise(ordered))
+    for spans in router.across.values():
+        ordered = sorted(spans)
+        assert all(a[1] + svg.LANE <= b[0] for a, b in pairwise(ordered))
+
+
+def test_svg_lines_to_a_far_column_run_through_the_gaps_between_cards():
+    schema = chain(20, 3)
+    cards = svg.layout(schema)
+    router = svg.Router(cards)
+    svg._edges(schema, cards, router)
+    # Every card of the chain is as tall as the others: the lines run under them, not over.
+    assert len(router.tracks) == 0
+    # A column of two cards between the two ends of a line: it runs between them.
+    first, second, third = (cards[name] for name in ("M0", "M1", "M2"))
+    filler = svg.Card("filler", "filler", "", [("a", "", "")] * 3, column=second.column)
+    filler.x, filler.y, filler.width = second.x, second.y + second.height + 2 * svg.ROW_GAP, 340
+    router = svg.Router({**cards, "filler": filler})
+    points = router.between(first, first.y + 60, third, third.y + 60)
+    assert points is not None
+    across = points[2][1]
+    assert second.y + second.height < across < filler.y
+    assert len(router.tracks) == 0
 
 
 def legacy():
@@ -983,3 +1025,159 @@ def test_a_models_own_diagram_wraps_the_models_around_it_and_names_the_rest():
     order = svg.layout_around(er.neighborhood(shop(), "Order"), "Order")
     # Order refers to Customer (on its left) and declares the many-to-many to Product (right).
     assert order["Customer"].column < order["Order"].column < order["Product"].column
+
+
+def kinds():
+    return app("kinds")
+
+
+def test_inheritance_is_described_as_inheritance():
+    schema = kinds()
+    models = {model["name"]: model for model in schema["models"]}
+    # The proxy is no model of its own, but its model names it.
+    assert "OpenShop" not in models
+    assert models["Shop"]["proxies"] == [
+        {"name": "OpenShop", "app": "kinds", "documentation": "The shops open today."}
+    ]
+    assert models["Site"]["abstractBases"] == [{"name": "Timestamped", "fields": ["created"]}]
+    # The child's columns are its own: the abstract base's are its parent's.
+    assert models["Shop"]["abstractBases"] == []
+    link = next(r for r in schema["relations"] if r["to"]["model"] == "Shop")
+    assert link["parentLink"] is True
+    docs = markdown.render(schema, sql="", diagram=None)
+    assert (
+        "Inherits from [Site](#site) (multi-table): its rows are joined on `site_ptr_id`." in docs
+    )
+    assert "Subclasses (multi-table): [Shop](#shop)." in docs
+    assert "Proxy models, on this table: `OpenShop`." in docs
+    assert "Columns from `Timestamped` (abstract): `created`." in docs
+    assert "- `site_ptr_id` → [Site](#site).`id`, parent link, on delete cascade" in docs
+    assert 'kinds_site ||--o| kinds_shop : "is a, by site_ptr_id"' in er.mermaid(schema)
+    text = er.dbml(schema)
+    assert "Note: '''Proxy models: OpenShop.'''" in table(text, "kinds_shop")
+    assert "Note: '''Columns from Timestamped (abstract): created.'''" in table(text, "kinds_site")
+    # A hollow triangle at the parent, as UML draws it.
+    assert svg.render(schema).count('class="inheritance"') == 1
+
+
+def test_a_foreign_key_the_database_does_not_check_says_so():
+    schema = kinds()
+    loose = next(r for r in schema["relations"] if r["to"]["field"] == "lives_near_id")
+    assert loose["constrained"] is False
+    docs = markdown.render(schema, sql="", diagram=None)
+    assert "| `lives_near_id` | `ForeignKey` | `bigint` | yes | FK (no constraint) |" in docs
+    assert (
+        "- `lives_near_id` → [Site](#site).`id`, on delete do nothing, no database constraint"
+    ) in docs
+    text = er.dbml(schema)
+    # No Ref, which would read as a foreign key: the column's note says what it refers to.
+    assert "Ref kinds_person_lives_near_id_fk" not in text
+    assert (
+        "  lives_near_id bigint [note: 'refers to kinds_site.id, with no foreign key in the "
+        "database']"
+    ) in text
+    assert 'kinds_site |o..o{ kinds_person : "(id) - (lives_near_id), no constraint"' in (
+        er.mermaid(schema)
+    )
+    assert 'stroke-dasharray="8 4"' in svg.render(schema)
+
+
+def test_a_many_to_many_through_a_model_is_in_both_models_relations():
+    docs = markdown.render(kinds(), sql="", diagram=None)
+    assert "- `teams` — many to many with [Team](#team), through [Membership](#membership)" in docs
+    assert (
+        "- `members` — many to many with [Person](#person), through [Membership](#membership)"
+    ) in docs
+
+
+def test_what_a_column_declares_beside_its_type():
+    schema = kinds()
+    fields = {
+        (model["name"], field["name"]): field
+        for model in schema["models"]
+        for field in model["fields"]
+    }
+    assert fields[("Site", "name")]["collation"] == "NOCASE"
+    budget = fields[("Site", "budget")]
+    assert (budget["maxDigits"], budget["decimalPlaces"]) == (10, 2)
+    docs = markdown.render(schema, sql="", diagram=None)
+    assert "| `name` | `CharField` | `varchar(50)` collation `NOCASE` |" in docs
+    assert "| `budget` | `DecimalField(10, 2)` | `decimal` |" in docs
+    text = er.dbml(schema)
+    assert "  name varchar(50) [not null, note: 'collation NOCASE']" in text
+    assert (
+        "  budget decimal [not null, note: 'declared max_digits=10, decimal_places=2, which the "
+        "database does not enforce']"
+    ) in text
+    if since(5, 0):
+        assert fields[("Team", "lower_name")]["stored"] is False
+        assert '| generated (virtual): `LOWER("name")` |' in docs
+        assert """  lower_name varchar(50) [note: 'generated (virtual): LOWER("name")']""" in text
+
+
+def test_grouped_choices_keep_their_groups():
+    schema = kinds()
+    media = next(enum for enum in schema["enums"] if enum["name"] == "PersonMedia")
+    assert [(value["dbName"], value["group"]) for value in media["values"]] == [
+        ("vinyl", "Audio"),
+        ("cd", "Audio"),
+        ("vhs", "Video"),
+    ]
+    docs = markdown.render(schema, sql="", diagram=None)
+    assert "| Group | Name | Stored as |" in docs
+    assert "| Video | `VHS Tape` | `vhs` |" in docs
+    assert "  \"vhs\" [note: 'group: Video']" in er.dbml(schema)
+    assert ("VHS Tape", "vhs · Video", "") in svg.layout(schema)["enum:PersonMedia"].rows
+
+
+def test_a_note_of_several_lines_is_between_three_quotes():
+    text = table(er.dbml(kinds()), "kinds_team")
+    # DBML takes no line break between single quotes.
+    assert "  name varchar(50) [not null, note: '''The team\\'s name.\n0: no name yet.''']" in text
+
+
+def test_a_models_own_diagram_draws_its_own_enums_only():
+    schema = kinds()
+    assert [e["name"] for e in er.neighborhood(schema, "Person")["enums"]] == ["PersonMedia"]
+    # Site is Person's neighbour: Person's enum is on Person's diagram, not on Site's.
+    assert er.neighborhood(schema, "Site")["enums"] == []
+
+
+@pytest.fixture
+def mysql():
+    """A MySQL alias whose server is not running: PyMySQL stands in for mysqlclient."""
+    pymysql = pytest.importorskip("pymysql")
+    pymysql.version_info = (2, 2, 1, "final", 0)
+    pymysql.install_as_MySQLdb()
+    from django.db.backends.mysql.base import DatabaseWrapper
+
+    alias = "mysql"
+    config = connections.configure_settings(
+        {
+            "default": settings.DATABASES["default"],
+            # A port nothing listens on: refused at once.
+            alias: {"ENGINE": "django.db.backends.mysql", "NAME": "x", "PORT": "1"},
+        }
+    )[alias]
+    connections[alias] = DatabaseWrapper(config, alias)
+    yield alias
+    del connections[alias]
+
+
+def test_docs_on_mysql_assume_a_server_when_it_cannot_be_asked(mysql):
+    schema = export.schema_for(mysql, ROOT, everything=False)
+    customer = next(model for model in schema["models"] if model["name"] == "Customer")
+    types = {field["name"]: field["nativeType"] for field in customer["fields"]}
+    assert types["name"] == "varchar(100)"
+    # The way a key is filled is its default's to say, as on every other backend.
+    assert types["id"] == "bigint"
+    sql = markdown.create_sql(schema, names(), mysql)
+    assert sql.startswith("-- Written for MySQL 8.4, assumed: the database could not be asked.")
+    assert "CREATE TABLE `shop_customer`" in sql
+    assert "-- Not collected" not in sql
+    assert "  name varchar(100) [not null" in er.dbml(schema)
+    connection = connections[mysql]
+    # Forgotten afterwards: a connection that reaches its server later asks it.
+    assert "mysql_server_data" not in vars(connection)
+    assert "data_types" not in vars(connection)
+    assert connection.connection is None
