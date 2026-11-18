@@ -94,7 +94,7 @@ An article, a draft until it is published.
 | `body` | `TextField` | `text` |  |  |  |  |
 | `status` | `PostStatus` | `varchar(10)` |  |  | `'draft'` |  |
 | `views` | `PositiveIntegerField` | `integer unsigned` |  |  | `0` |  |
-| `rating` | `DecimalField` | `decimal` | yes |  |  |  |
+| `rating` | `DecimalField(3, 1)` | `decimal` | yes |  |  |  |
 | `metadata` | `JSONField` | `text` |  |  | `dict()` |  |
 | `published_at` | `DateTimeField` | `datetime` | yes |  |  |  |
 | `created_at` | `DateTimeField` | `datetime` |  |  | `now()` |  |
